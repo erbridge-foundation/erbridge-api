@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO sde_solar_system (\n            solar_system_id, name, region_id, constellation_id,\n            faction_id, star_id,\n            security_status, security_class, wh_class, wormhole_class_id,\n            luminosity, radius,\n            border, corridor, fringe, hub, international, regional,\n            visual_effect,\n            name_i18n, planet_ids, stargate_ids,\n            disallowed_anchor_categories, disallowed_anchor_groups,\n            position, position_2d\n        )\n        SELECT * FROM UNNEST(\n            $1::bigint[],\n            $2::text[],\n            $3::bigint[],\n            $4::bigint[],\n            $5::bigint[],\n            $6::bigint[],\n            $7::real[],\n            $8::text[],\n            $9::text[],\n            $10::bigint[],\n            $11::real[],\n            $12::double precision[],\n            $13::boolean[],\n            $14::boolean[],\n            $15::boolean[],\n            $16::boolean[],\n            $17::boolean[],\n            $18::boolean[],\n            $19::text[],\n            $20::jsonb[],\n            $21::jsonb[],\n            $22::jsonb[],\n            $23::jsonb[],\n            $24::jsonb[],\n            $25::jsonb[],\n            $26::jsonb[]\n        )\n        ON CONFLICT (solar_system_id) DO UPDATE\n            SET name                          = EXCLUDED.name,\n                region_id                     = EXCLUDED.region_id,\n                constellation_id              = EXCLUDED.constellation_id,\n                faction_id                    = EXCLUDED.faction_id,\n                star_id                       = EXCLUDED.star_id,\n                security_status               = EXCLUDED.security_status,\n                security_class                = EXCLUDED.security_class,\n                wh_class                      = COALESCE(EXCLUDED.wh_class, sde_solar_system.wh_class),\n                wormhole_class_id             = EXCLUDED.wormhole_class_id,\n                luminosity                    = EXCLUDED.luminosity,\n                radius                        = EXCLUDED.radius,\n                border                        = EXCLUDED.border,\n                corridor                      = EXCLUDED.corridor,\n                fringe                        = EXCLUDED.fringe,\n                hub                           = EXCLUDED.hub,\n                international                 = EXCLUDED.international,\n                regional                      = EXCLUDED.regional,\n                visual_effect                 = EXCLUDED.visual_effect,\n                name_i18n                     = EXCLUDED.name_i18n,\n                planet_ids                    = EXCLUDED.planet_ids,\n                stargate_ids                  = EXCLUDED.stargate_ids,\n                disallowed_anchor_categories  = EXCLUDED.disallowed_anchor_categories,\n                disallowed_anchor_groups      = EXCLUDED.disallowed_anchor_groups,\n                position                      = EXCLUDED.position,\n                position_2d                   = EXCLUDED.position_2d\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "TextArray",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Float4Array",
+        "TextArray",
+        "TextArray",
+        "Int8Array",
+        "Float4Array",
+        "Float8Array",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "TextArray",
+        "JsonbArray",
+        "JsonbArray",
+        "JsonbArray",
+        "JsonbArray",
+        "JsonbArray",
+        "JsonbArray",
+        "JsonbArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "09b079e24d1a573d9dece7d0f3b9138546b64e1d5592788d49f0a48897523c76"
+}

@@ -1,0 +1,106 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE eve_character\n        SET\n            corporation_id          = $2,\n            alliance_id             = $3,\n            esi_client_id           = $4,\n            encrypted_access_token  = $5,\n            encrypted_refresh_token = $6,\n            esi_token_expires_at    = $7,\n            updated_at              = now()\n        WHERE eve_character_id = $1\n        RETURNING\n            id, account_id, eve_character_id, name,\n            corporation_id, alliance_id, is_main, is_online,\n            esi_client_id,\n            encrypted_access_token, encrypted_refresh_token,\n            esi_token_expires_at, created_at, updated_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "eve_character_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "corporation_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "alliance_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_main",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "is_online",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "esi_client_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "encrypted_access_token",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 10,
+        "name": "encrypted_refresh_token",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 11,
+        "name": "esi_token_expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "fbb15a551afaef3a182f70ff5846ce1b293bb92075e56457c363552db3958a05"
+}

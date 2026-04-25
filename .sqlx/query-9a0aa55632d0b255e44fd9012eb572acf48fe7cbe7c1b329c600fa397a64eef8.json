@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE eve_character AS ec\n        SET\n            corporation_id = u.corporation_id,\n            alliance_id    = u.alliance_id,\n            updated_at     = now()\n        FROM UNNEST($1::uuid[], $2::bigint[], $3::bigint[])\n            AS u(id, corporation_id, alliance_id)\n        WHERE ec.id = u.id\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9a0aa55632d0b255e44fd9012eb572acf48fe7cbe7c1b329c600fa397a64eef8"
+}

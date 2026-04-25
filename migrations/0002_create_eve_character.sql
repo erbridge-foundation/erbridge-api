@@ -6,6 +6,8 @@ CREATE TABLE eve_character (
     corporation_id          BIGINT      NOT NULL,
     alliance_id             BIGINT,
     is_main                 BOOLEAN     NOT NULL DEFAULT false,
+    is_online               BOOLEAN,
+    esi_client_id           TEXT,
     encrypted_access_token  BYTEA,
     encrypted_refresh_token BYTEA,
     esi_token_expires_at    TIMESTAMPTZ,

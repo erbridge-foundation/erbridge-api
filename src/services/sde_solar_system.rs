@@ -173,7 +173,9 @@ async fn download_and_extract_sde(
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.context("read SDE ZIP chunk")?;
-            file.write_all(&chunk).await.context("write SDE ZIP chunk")?;
+            file.write_all(&chunk)
+                .await
+                .context("write SDE ZIP chunk")?;
         }
 
         file.flush().await.context("flush SDE ZIP file")?;

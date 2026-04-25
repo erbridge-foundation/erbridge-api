@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO sde_solar_system_metadata (id, sde_version, sde_checksum, loaded_at)\n        VALUES (1, $1, $2, now())\n        ON CONFLICT (id) DO UPDATE\n            SET sde_version  = EXCLUDED.sde_version,\n                sde_checksum = EXCLUDED.sde_checksum,\n                loaded_at    = EXCLUDED.loaded_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "89469b50ea845c90bc3c4f54f3ed8b7abc012fc2f32d446eb804b9cccd256ede"
+}

@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, sde_version, sde_checksum, loaded_at\n        FROM sde_solar_system_metadata\n        WHERE id = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 1,
+        "name": "sde_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "sde_checksum",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "loaded_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0fb3b6a11cd15ea103c8281c680b8fd564e224e65df6ca15bdd99e1bf88d4e03"
+}

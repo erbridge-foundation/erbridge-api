@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM account\n        WHERE status = 'pending_delete'\n          AND delete_requested_at < now() - ($1 * interval '1 day')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cc41e95179b4363169aea8ccc2d08a295c4beca9b16000dd289dc44a115f655e"
+}

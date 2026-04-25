@@ -1,0 +1,172 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT solar_system_id, name, region_id, constellation_id,\n               faction_id, star_id,\n               security_status, security_class, wh_class, wormhole_class_id,\n               luminosity, radius,\n               border, corridor, fringe, hub, international, regional,\n               visual_effect,\n               name_i18n as \"name_i18n: Value\",\n               planet_ids as \"planet_ids: Value\",\n               stargate_ids as \"stargate_ids: Value\",\n               disallowed_anchor_categories as \"disallowed_anchor_categories: Value\",\n               disallowed_anchor_groups as \"disallowed_anchor_groups: Value\",\n               position as \"position: Value\",\n               position_2d as \"position_2d: Value\"\n        FROM sde_solar_system\n        WHERE solar_system_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "solar_system_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "region_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "constellation_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "faction_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "star_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "security_status",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 7,
+        "name": "security_class",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "wh_class",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "wormhole_class_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "luminosity",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 11,
+        "name": "radius",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 12,
+        "name": "border",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "corridor",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "fringe",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "hub",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 16,
+        "name": "international",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "regional",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 18,
+        "name": "visual_effect",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "name_i18n: Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 20,
+        "name": "planet_ids: Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 21,
+        "name": "stargate_ids: Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 22,
+        "name": "disallowed_anchor_categories: Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 23,
+        "name": "disallowed_anchor_groups: Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 24,
+        "name": "position: Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 25,
+        "name": "position_2d: Value",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "a85dc0ad32cf33cc8608f4aeb28b85ccef6893595643dc61a910e6fef324c293"
+}

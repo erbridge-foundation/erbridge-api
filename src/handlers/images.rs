@@ -50,11 +50,22 @@ pub async fn image(
         upstream_url.push_str(&query_parts.join("&"));
     }
 
-    match fetch_image(&state, &category, id, &variation, params.size, &upstream_url).await {
+    match fetch_image(
+        &state,
+        &category,
+        id,
+        &variation,
+        params.size,
+        &upstream_url,
+    )
+    .await
+    {
         Ok((data, content_type)) => image_response(data, &content_type),
-        Err(ImageError::UpstreamRequestFailed | ImageError::UpstreamErrorStatus | ImageError::UpstreamBodyFailed) => {
-            StatusCode::BAD_GATEWAY.into_response()
-        }
+        Err(
+            ImageError::UpstreamRequestFailed
+            | ImageError::UpstreamErrorStatus
+            | ImageError::UpstreamBodyFailed,
+        ) => StatusCode::BAD_GATEWAY.into_response(),
     }
 }
 

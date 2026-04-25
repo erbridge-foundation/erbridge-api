@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::PgPool;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     config::Config,
@@ -78,10 +78,22 @@ pub async fn ensure_token_fresh(
         return Ok(TokenStatus::Fresh(access_token.clone()));
     }
 
-    // Pick any client from the pool — all share the same scopes and callback.
-    let esi_client = config
-        .esi_clients
-        .first()
+    // Use the client that originally issued this character's grant.
+    // Falling back to the first client only if the stored client_id is missing
+    // (legacy rows) or no longer configured (client was rotated out).
+    let esi_client = character
+        .esi_client_id
+        .as_deref()
+        .and_then(|id| config.esi_clients.iter().find(|c| c.client_id == id))
+        .or_else(|| {
+            if character.esi_client_id.is_some() {
+                warn!(
+                    eve_character_id = character.eve_character_id,
+                    "ESI client_id no longer configured; falling back to first client"
+                );
+            }
+            config.esi_clients.first()
+        })
         .context("no ESI clients configured")?;
 
     let resp = http
@@ -113,6 +125,7 @@ pub async fn ensure_token_fresh(
         character.eve_character_id,
         public_info.corporation_id,
         public_info.alliance_id,
+        &esi_client.client_id,
         &resp.access_token,
         &resp.refresh_token,
         new_expires_at,

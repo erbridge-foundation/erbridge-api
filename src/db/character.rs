@@ -14,6 +14,10 @@ pub struct Character {
     pub corporation_id: i64,
     pub alliance_id: Option<i64>,
     pub is_main: bool,
+    pub is_online: Option<bool>,
+    /// The ESI client_id used to obtain this character's token grant.
+    /// None on ghost characters or rows created before this field was added.
+    pub esi_client_id: Option<String>,
     /// None on ghost characters.
     pub access_token: Option<String>,
     /// None on ghost characters.
@@ -34,6 +38,8 @@ struct CharacterRow {
     corporation_id: i64,
     alliance_id: Option<i64>,
     is_main: bool,
+    pub is_online: Option<bool>,
+    esi_client_id: Option<String>,
     encrypted_access_token: Option<Vec<u8>>,
     encrypted_refresh_token: Option<Vec<u8>>,
     esi_token_expires_at: Option<DateTime<Utc>>,
@@ -66,6 +72,8 @@ fn decrypt_row(row: CharacterRow, aes_key: &[u8; 32]) -> Result<Character> {
         corporation_id: row.corporation_id,
         alliance_id: row.alliance_id,
         is_main: row.is_main,
+        is_online: row.is_online,
+        esi_client_id: row.esi_client_id,
         access_token,
         refresh_token,
         esi_token_expires_at: row.esi_token_expires_at,
@@ -81,6 +89,7 @@ pub struct InsertCharacterData<'a> {
     pub corporation_id: i64,
     pub alliance_id: Option<i64>,
     pub is_main: bool,
+    pub esi_client_id: &'a str,
     pub access_token: &'a str,
     pub refresh_token: &'a str,
     pub esi_token_expires_at: DateTime<Utc>,
@@ -103,13 +112,15 @@ pub async fn insert_character(
         INSERT INTO eve_character (
             account_id, eve_character_id, name,
             corporation_id, alliance_id, is_main,
+            esi_client_id,
             encrypted_access_token, encrypted_refresh_token,
             esi_token_expires_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING
             id, account_id, eve_character_id, name,
-            corporation_id, alliance_id, is_main,
+            corporation_id, alliance_id, is_main, is_online,
+            esi_client_id,
             encrypted_access_token, encrypted_refresh_token,
             esi_token_expires_at, created_at, updated_at
         "#,
@@ -119,6 +130,7 @@ pub async fn insert_character(
         data.corporation_id,
         data.alliance_id,
         data.is_main,
+        data.esi_client_id,
         enc_access,
         enc_refresh,
         data.esi_token_expires_at,
@@ -141,6 +153,7 @@ pub async fn claim_ghost_character(
     name: &str,
     corporation_id: i64,
     alliance_id: Option<i64>,
+    esi_client_id: &str,
     access_token: &str,
     refresh_token: &str,
     esi_token_expires_at: DateTime<Utc>,
@@ -160,14 +173,16 @@ pub async fn claim_ghost_character(
             name                    = $4,
             corporation_id          = $5,
             alliance_id             = $6,
-            encrypted_access_token  = $7,
-            encrypted_refresh_token = $8,
-            esi_token_expires_at    = $9,
+            esi_client_id           = $7,
+            encrypted_access_token  = $8,
+            encrypted_refresh_token = $9,
+            esi_token_expires_at    = $10,
             updated_at              = now()
         WHERE eve_character_id = $1
         RETURNING
             id, account_id, eve_character_id, name,
-            corporation_id, alliance_id, is_main,
+            corporation_id, alliance_id, is_main, is_online,
+            esi_client_id,
             encrypted_access_token, encrypted_refresh_token,
             esi_token_expires_at, created_at, updated_at
         "#,
@@ -177,6 +192,7 @@ pub async fn claim_ghost_character(
         name,
         corporation_id,
         alliance_id,
+        esi_client_id,
         enc_access,
         enc_refresh,
         esi_token_expires_at,
@@ -195,6 +211,7 @@ pub async fn update_character_tokens(
     eve_character_id: i64,
     corporation_id: i64,
     alliance_id: Option<i64>,
+    esi_client_id: &str,
     access_token: &str,
     refresh_token: &str,
     esi_token_expires_at: DateTime<Utc>,
@@ -211,20 +228,23 @@ pub async fn update_character_tokens(
         SET
             corporation_id          = $2,
             alliance_id             = $3,
-            encrypted_access_token  = $4,
-            encrypted_refresh_token = $5,
-            esi_token_expires_at    = $6,
+            esi_client_id           = $4,
+            encrypted_access_token  = $5,
+            encrypted_refresh_token = $6,
+            esi_token_expires_at    = $7,
             updated_at              = now()
         WHERE eve_character_id = $1
         RETURNING
             id, account_id, eve_character_id, name,
-            corporation_id, alliance_id, is_main,
+            corporation_id, alliance_id, is_main, is_online,
+            esi_client_id,
             encrypted_access_token, encrypted_refresh_token,
             esi_token_expires_at, created_at, updated_at
         "#,
         eve_character_id,
         corporation_id,
         alliance_id,
+        esi_client_id,
         enc_access,
         enc_refresh,
         esi_token_expires_at,
@@ -246,7 +266,8 @@ pub async fn find_character_by_eve_id(
         r#"
         SELECT
             id, account_id, eve_character_id, name,
-            corporation_id, alliance_id, is_main,
+            corporation_id, alliance_id, is_main, is_online,
+            esi_client_id,
             encrypted_access_token, encrypted_refresh_token,
             esi_token_expires_at, created_at, updated_at
         FROM eve_character
@@ -271,7 +292,8 @@ pub async fn find_characters_by_account(
         r#"
         SELECT
             id, account_id, eve_character_id, name,
-            corporation_id, alliance_id, is_main,
+            corporation_id, alliance_id, is_main, is_online,
+            esi_client_id,
             encrypted_access_token, encrypted_refresh_token,
             esi_token_expires_at, created_at, updated_at
         FROM eve_character

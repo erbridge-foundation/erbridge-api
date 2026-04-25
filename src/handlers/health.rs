@@ -6,9 +6,7 @@ use crate::{
     state::AppState,
 };
 
-pub async fn health(
-    State(state): State<Arc<AppState>>,
-) -> (StatusCode, Json<HealthResponse>) {
+pub async fn health(State(state): State<Arc<AppState>>) -> (StatusCode, Json<HealthResponse>) {
     let db_state = match sqlx::query("SELECT 1").execute(&state.db).await {
         Ok(_) => ComponentState::Ok,
         Err(_) => ComponentState::Degraded,

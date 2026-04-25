@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE account\n        SET status = 'pending_delete',\n            delete_requested_at = now(),\n            updated_at = now()\n        WHERE id = $1\n          AND status = 'active'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6871268c648591c747c4e68b11aa641a57ad2563beb96ca1c7c1b6d240e221ea"
+}
