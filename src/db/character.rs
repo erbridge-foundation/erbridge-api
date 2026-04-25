@@ -440,3 +440,69 @@ pub async fn set_main_character(pool: &PgPool, account_id: Uuid, new_main_id: Uu
         .await
         .context("failed to commit set_main transaction")
 }
+
+/// Returns the eve_character_ids for all non-ghost characters belonging to
+/// an account. Used to register characters with the online poller at login.
+pub async fn find_pollable_character_ids_for_account(
+    pool: &PgPool,
+    account_id: Uuid,
+) -> Result<Vec<i64>> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT eve_character_id
+        FROM eve_character
+        WHERE account_id = $1
+          AND encrypted_access_token IS NOT NULL
+        "#,
+        account_id,
+    )
+    .fetch_all(pool)
+    .await
+    .context("failed to fetch pollable character ids for account")
+}
+
+/// Returns all non-ghost characters that have ESI tokens, for use by the
+/// background pollers. Results are grouped by esi_client_id so callers can
+/// dispatch per-client tasks.
+pub async fn find_all_pollable_characters(
+    pool: &PgPool,
+    aes_key: &[u8; 32],
+) -> Result<Vec<Character>> {
+    let rows = sqlx::query_as!(
+        CharacterRow,
+        r#"
+        SELECT
+            id, account_id, eve_character_id, name,
+            corporation_id, alliance_id, is_main, is_online,
+            esi_client_id,
+            encrypted_access_token, encrypted_refresh_token,
+            esi_token_expires_at, created_at, updated_at
+        FROM eve_character
+        WHERE account_id IS NOT NULL
+          AND encrypted_access_token IS NOT NULL
+        ORDER BY esi_client_id NULLS LAST, eve_character_id ASC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .context("failed to fetch all pollable characters")?;
+
+    rows.into_iter().map(|r| decrypt_row(r, aes_key)).collect()
+}
+
+/// Updates the is_online field for a single character.
+pub async fn update_character_online_status(
+    pool: &PgPool,
+    eve_character_id: i64,
+    is_online: bool,
+) -> Result<()> {
+    sqlx::query!(
+        "UPDATE eve_character SET is_online = $2 WHERE eve_character_id = $1",
+        eve_character_id,
+        is_online,
+    )
+    .execute(pool)
+    .await
+    .context("failed to update character online status")?;
+    Ok(())
+}

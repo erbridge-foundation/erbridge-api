@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE eve_character SET is_online = $2 WHERE eve_character_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "db288e8fdcfc3c1548d138ad6556ce23e48a24108b0043a655a930362b1824c7"
+}

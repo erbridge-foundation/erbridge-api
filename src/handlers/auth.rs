@@ -16,7 +16,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    db::character::find_characters_by_account,
+    db::character::{find_characters_by_account, find_pollable_character_ids_for_account},
     dto::auth::{AuthMode, MeCharacter, MeResponse, SessionClaims, StateClaims},
     dto::envelope::ApiResponse,
     esi::{character::get_character_public_info, jwks::parse_character_id, jwks::verify_eve_jwt},
@@ -254,6 +254,8 @@ pub async fn callback(
                 (StatusCode::BAD_REQUEST, "could not attach character").into_response()
             })?;
 
+            register_account_with_online_poller(&state, account_id).await;
+
             let redirect_url = format!("{}/characters", state.config.frontend_url);
             info!(account_id = %account_id, eve_character_id, "character added to account");
             let cookie = make_session_cookie(account_id, &state.config.jwt_key).map_err(|e| {
@@ -285,6 +287,8 @@ pub async fn callback(
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
             })?;
 
+            register_account_with_online_poller(&state, account_id).await;
+
             let redirect_url = format!("{}/", state.config.frontend_url);
             info!(account_id = %account_id, "session cookie issued");
             let cookie = make_session_cookie(account_id, &state.config.jwt_key).map_err(|e| {
@@ -292,6 +296,23 @@ pub async fn callback(
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
             })?;
             Ok((jar.add(cookie), Redirect::to(&redirect_url)))
+        }
+    }
+}
+
+/// Fetches all pollable character IDs for the account and sends them to the
+/// online poller. Failures are non-fatal — the poller will pick them up on its
+/// next DB scan anyway.
+async fn register_account_with_online_poller(state: &AppState, account_id: Uuid) {
+    match find_pollable_character_ids_for_account(&state.db, account_id).await {
+        Ok(ids) if !ids.is_empty() => {
+            if let Err(e) = state.online_poll_tx.send(ids).await {
+                warn!(error = %e, %account_id, "failed to register characters with online poller");
+            }
+        }
+        Ok(_) => {}
+        Err(e) => {
+            warn!(error = %e, %account_id, "failed to fetch character ids for online poller registration");
         }
     }
 }

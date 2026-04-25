@@ -10,19 +10,25 @@ pub mod services;
 pub mod state;
 pub mod tasks;
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     Router,
     middleware::from_fn_with_state,
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, post},
 };
+use dashmap::DashMap;
 use jsonwebtoken::jwk::JwkSet;
 use reqwest::Client;
 use sqlx::PgPool;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast, mpsc};
 
-use crate::{config::Config, esi::discovery::EsiMetadata, state::AppState};
+use crate::{
+    config::Config,
+    esi::discovery::EsiMetadata,
+    state::AppState,
+    tasks::character_location_poll::LocationEvent,
+};
 
 pub fn router(
     pool: PgPool,
@@ -30,6 +36,8 @@ pub fn router(
     config: Config,
     esi_metadata: EsiMetadata,
     jwks: Arc<RwLock<JwkSet>>,
+    online_poll_tx: mpsc::Sender<Vec<i64>>,
+    location_subs: Arc<DashMap<i64, broadcast::Sender<LocationEvent>>>,
 ) -> Router {
     let state = Arc::new(AppState {
         db: pool,
@@ -37,6 +45,8 @@ pub fn router(
         config,
         esi_metadata,
         jwks,
+        online_poll_tx,
+        location_subs,
     });
 
     // Routes that require an active (non-pending-delete) account.

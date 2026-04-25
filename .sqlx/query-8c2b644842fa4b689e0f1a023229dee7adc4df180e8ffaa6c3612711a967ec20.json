@@ -1,0 +1,98 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, account_id, eve_character_id, name,\n            corporation_id, alliance_id, is_main, is_online,\n            esi_client_id,\n            encrypted_access_token, encrypted_refresh_token,\n            esi_token_expires_at, created_at, updated_at\n        FROM eve_character\n        WHERE account_id IS NOT NULL\n          AND encrypted_access_token IS NOT NULL\n        ORDER BY esi_client_id NULLS LAST, eve_character_id ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "eve_character_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "corporation_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "alliance_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_main",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "is_online",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "esi_client_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "encrypted_access_token",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 10,
+        "name": "encrypted_refresh_token",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 11,
+        "name": "esi_token_expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8c2b644842fa4b689e0f1a023229dee7adc4df180e8ffaa6c3612711a967ec20"
+}

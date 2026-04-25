@@ -31,6 +31,15 @@ pub struct Config {
     /// Maximum age of an ESI refresh token in days before it is considered
     /// expired and the character must re-authenticate (ADR-029).
     pub esi_refresh_token_max_days: u32,
+    /// Maximum concurrent in-flight ESI requests per client for the location
+    /// poller. Tune upward for large character counts. (ESI_POLL_CONCURRENCY)
+    pub esi_poll_concurrency: usize,
+    /// Characters per batch for the online poller, per client.
+    /// (ESI_POLL_BATCH_SIZE)
+    pub esi_poll_batch_size: usize,
+    /// Minimum milliseconds to sleep between online poll batches per client.
+    /// Clamped to at least 100ms. (ESI_POLL_BATCH_DELAY_MS)
+    pub esi_poll_batch_delay_ms: u64,
 }
 
 impl Config {
@@ -72,6 +81,33 @@ impl Config {
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(7);
 
+        let esi_poll_concurrency = std::env::var("ESI_POLL_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(10);
+
+        let esi_poll_batch_size = std::env::var("ESI_POLL_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(10);
+
+        let esi_poll_batch_delay_ms = {
+            let raw = std::env::var("ESI_POLL_BATCH_DELAY_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(500);
+            if raw < 100 {
+                tracing::warn!(
+                    configured = raw,
+                    clamped = 100,
+                    "ESI_POLL_BATCH_DELAY_MS is below minimum; clamping to 100ms"
+                );
+                100
+            } else {
+                raw
+            }
+        };
+
         Ok(Self {
             esi_clients,
             esi_callback_url,
@@ -82,6 +118,9 @@ impl Config {
             account_deletion_grace_days,
             esi_base,
             esi_refresh_token_max_days,
+            esi_poll_concurrency,
+            esi_poll_batch_size,
+            esi_poll_batch_delay_ms,
         })
     }
 }
