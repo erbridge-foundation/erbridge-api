@@ -399,7 +399,7 @@ pub async fn set_main_character(pool: &PgPool, account_id: Uuid, new_main_id: Uu
     }
 
     sqlx::query!(
-        "UPDATE eve_character SET is_main = false WHERE account_id = $1 AND is_main = true",
+        "UPDATE eve_character SET is_main = false, updated_at = now() WHERE account_id = $1 AND is_main = true",
         account_id,
     )
     .execute(&mut *tx)

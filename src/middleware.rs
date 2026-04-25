@@ -15,7 +15,7 @@ use crate::{
 
 /// Rejects requests from accounts that are not in `active` status.
 /// Must run after the `AccountId` extractor has already validated the JWT.
-pub async fn require_actclive_account(
+pub async fn require_active_account(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     request: Request,

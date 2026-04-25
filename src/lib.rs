@@ -39,18 +39,31 @@ pub fn router(
         jwks,
     });
 
+        // Routes that require an active (non-pending-delete) account.
+    let authenticated = Router::new()
+        // Account / character management
+        .route("/api/v1/me", get(handlers::auth::me))
+        .route("/api/v1/me", delete(handlers::character::delete_account))
+
+        // Auth endpoints that required an authenticated account
+        .route("/auth/characters/add", get(handlers::auth::add_character))
+        .route("/auth/logout", post(handlers::auth::logout))
+                .layer(from_fn_with_state(
+                Arc::clone(&state),
+                middleware::require_active_account,
+        ));
+
     Router::new()
         // Health
         .route("/api/health", get(handlers::health::health))
         // EVE SSO auth flow
         .route("/auth/login", get(handlers::auth::login))
-        .route("/auth/characters/add", get(handlers::auth::add_character))
         .route("/auth/callback", get(handlers::auth::callback))
-        .route("/auth/logout", post(handlers::auth::logout))
         // EVE image proxy (no auth — images are public)
         .route(
             "/api/v1/images/{category}/{id}/{variation}",
             get(handlers::images::image),
         )
+        .merge(authenticated)
         .with_state(state)
 }
