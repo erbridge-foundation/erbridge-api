@@ -8,6 +8,7 @@ pub mod handlers;
 pub mod middleware;
 pub mod services;
 pub mod state;
+pub mod tasks;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -41,6 +42,15 @@ pub fn router(
     Router::new()
         // Health
         .route("/api/health", get(handlers::health::health))
+        // EVE SSO auth flow
+        .route("/auth/login", get(handlers::auth::login))
+        .route("/auth/characters/add", get(handlers::auth::add_character))
+        .route("/auth/callback", get(handlers::auth::callback))
+        .route("/auth/logout", post(handlers::auth::logout))
         // EVE image proxy (no auth — images are public)
+        .route(
+            "/api/v1/images/{category}/{id}/{variation}",
+            get(handlers::images::image),
+        )
         .with_state(state)
 }

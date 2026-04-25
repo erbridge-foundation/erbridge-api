@@ -45,6 +45,10 @@ async fn main() -> anyhow::Result<()> {
     info!("JWK set loaded ({} keys)", jwks.keys.len());
     let jwks = Arc::new(RwLock::new(jwks));
 
+    // Spawn background tasks
+    erbridge_api::tasks::image_cache_cleanup::spawn_image_cache_cleanup(config.image_cache_dir.clone());
+    erbridge_api::services::sde_solar_system::spawn_sde_update_check(pool.clone(), http.clone());
+
     let app = erbridge_api::router(pool, http, config, esi_metadata, jwks);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
