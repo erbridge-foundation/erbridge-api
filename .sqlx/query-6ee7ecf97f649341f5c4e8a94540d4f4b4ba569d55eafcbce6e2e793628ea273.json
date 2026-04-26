@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE map_connections\n        SET life_state = COALESCE($2, life_state),\n            mass_state = COALESCE($3, mass_state),\n            updated_at = now()\n        WHERE connection_id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6ee7ecf97f649341f5c4e8a94540d4f4b4ba569d55eafcbce6e2e793628ea273"
+}

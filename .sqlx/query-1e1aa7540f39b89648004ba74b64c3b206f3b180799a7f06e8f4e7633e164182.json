@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE map_connection_ends\n        SET signature_id = $3, updated_at = now()\n        WHERE connection_id = $1 AND side = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1e1aa7540f39b89648004ba74b64c3b206f3b180799a7f06e8f4e7633e164182"
+}

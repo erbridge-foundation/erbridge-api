@@ -1,0 +1,69 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO map_checkpoints\n            (map_id, last_included_seq, checkpoint_version, event_count, checksum, state)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        RETURNING checkpoint_id, map_id, created_at, last_included_seq,\n                  checkpoint_version, event_count, checksum, state\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "checkpoint_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "map_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "last_included_seq",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "checkpoint_version",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "event_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "checksum",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "state",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int4",
+        "Int4",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "82ac6b70e3aaa24d0a859dd75587caeaee713312a257d54776a4a49a119e87d0"
+}

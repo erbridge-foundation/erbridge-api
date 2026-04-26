@@ -13,6 +13,8 @@ pub enum AuditEvent {
     CharacterRemoved { account_id: Uuid, eve_character_id: i64 },
     CharacterSetMain { account_id: Uuid, eve_character_id: i64 },
     GhostCharacterClaimed { account_id: Uuid, eve_character_id: i64, character_name: String },
+    MapCreated { account_id: Uuid, map_id: Uuid, name: String },
+    MapDeleted { account_id: Uuid, map_id: Uuid },
 }
 
 impl AuditEvent {
@@ -26,6 +28,8 @@ impl AuditEvent {
             Self::CharacterRemoved { .. } => "character_removed",
             Self::CharacterSetMain { .. } => "character_set_main",
             Self::GhostCharacterClaimed { .. } => "ghost_character_claimed",
+            Self::MapCreated { .. } => "map_created",
+            Self::MapDeleted { .. } => "map_deleted",
         }
     }
 
@@ -59,6 +63,15 @@ impl AuditEvent {
                 "account_id": account_id,
                 "eve_character_id": eve_character_id,
                 "character_name": character_name,
+            }),
+            // actor carries account_id; include map_id and name for context.
+            Self::MapCreated { map_id, name, .. } => json!({
+                "map_id": map_id,
+                "name": name,
+            }),
+            // actor carries account_id; include map_id so the event is queryable.
+            Self::MapDeleted { map_id, .. } => json!({
+                "map_id": map_id,
             }),
         }
     }
@@ -167,6 +180,33 @@ mod tests {
         assert_eq!(event.event_type(), "character_set_main");
         assert_eq!(event.details()["eve_character_id"], 99i64);
         assert!(event.details().get("account_id").is_none());
+    }
+
+    #[test]
+    fn map_created_serialises_correctly() {
+        let account_id = test_uuid();
+        let map_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+        let event = AuditEvent::MapCreated {
+            account_id,
+            map_id,
+            name: "Wormhole Chain Alpha".into(),
+        };
+        assert_eq!(event.event_type(), "map_created");
+        let d = event.details();
+        assert_eq!(d["map_id"], map_id.to_string());
+        assert_eq!(d["name"], "Wormhole Chain Alpha");
+        assert!(d.get("account_id").is_none());
+    }
+
+    #[test]
+    fn map_deleted_serialises_correctly() {
+        let account_id = test_uuid();
+        let map_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+        let event = AuditEvent::MapDeleted { account_id, map_id };
+        assert_eq!(event.event_type(), "map_deleted");
+        let d = event.details();
+        assert_eq!(d["map_id"], map_id.to_string());
+        assert!(d.get("account_id").is_none());
     }
 
     #[test]

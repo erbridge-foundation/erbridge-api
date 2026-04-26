@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE map_signatures s\n        SET derived_life_state = c.life_state,\n            derived_mass_state = c.mass_state,\n            updated_at         = now()\n        FROM map_connections c\n        WHERE c.connection_id = $1\n          AND s.connection_id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "026b78d75875e6bf7262fd62353bcbd56d76f9048c4e3953f169dd8b9329bebb"
+}

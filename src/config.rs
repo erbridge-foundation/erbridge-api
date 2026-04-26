@@ -40,6 +40,9 @@ pub struct Config {
     /// Minimum milliseconds to sleep between online poll batches per client.
     /// Clamped to at least 100ms. (ESI_POLL_BATCH_DELAY_MS)
     pub esi_poll_batch_delay_ms: u64,
+    /// How often (in minutes) the map checkpoint task snapshots map state.
+    /// (MAP_CHECKPOINT_INTERVAL_MINS, default 60)
+    pub map_checkpoint_interval_mins: u64,
 }
 
 impl Config {
@@ -108,6 +111,11 @@ impl Config {
             }
         };
 
+        let map_checkpoint_interval_mins = std::env::var("MAP_CHECKPOINT_INTERVAL_MINS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(60);
+
         Ok(Self {
             esi_clients,
             esi_callback_url,
@@ -121,6 +129,7 @@ impl Config {
             esi_poll_concurrency,
             esi_poll_batch_size,
             esi_poll_batch_delay_ms,
+            map_checkpoint_interval_mins,
         })
     }
 }

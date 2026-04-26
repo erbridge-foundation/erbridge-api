@@ -1,3 +1,10 @@
 pub mod account;
 pub mod character;
+pub mod connection;
+pub mod map;
+pub mod map_checkpoint;
+pub mod map_event;
+pub mod map_types;
+pub mod route;
 pub mod sde_solar_system;
+pub mod signature;

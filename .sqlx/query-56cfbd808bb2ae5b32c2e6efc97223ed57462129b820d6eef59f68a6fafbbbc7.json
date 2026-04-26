@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT signature_id, map_id, system_id, sig_code, sig_type, status,\n               connection_id, connection_side, wormhole_code,\n               derived_life_state, derived_mass_state,\n               created_at, updated_at, extra\n        FROM map_signatures\n        WHERE map_id = $1\n        ORDER BY created_at ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "signature_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "map_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "system_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "sig_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "sig_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "connection_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "connection_side",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "wormhole_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "derived_life_state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "derived_mass_state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "extra",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "56cfbd808bb2ae5b32c2e6efc97223ed57462129b820d6eef59f68a6fafbbbc7"
+}

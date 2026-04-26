@@ -71,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
     let online_poll_tx =
         erbridge_api::tasks::character_online_poll::spawn_online_poller(Arc::clone(&poller_state));
     erbridge_api::tasks::character_location_poll::spawn_location_poller(Arc::clone(&poller_state));
+    erbridge_api::tasks::map_checkpoint::spawn_checkpoint_task(Arc::clone(&poller_state));
 
     let app = erbridge_api::router(
         pool,

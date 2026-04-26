@@ -83,6 +83,7 @@ pub fn test_state(pool: sqlx::PgPool) -> Arc<AppState> {
         esi_poll_concurrency: 10,
         esi_poll_batch_size: 10,
         esi_poll_batch_delay_ms: 500,
+        map_checkpoint_interval_mins: 60,
     };
 
     let esi_metadata = EsiMetadata {

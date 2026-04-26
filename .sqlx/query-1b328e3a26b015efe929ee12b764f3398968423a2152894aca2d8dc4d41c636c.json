@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT m.map_id,\n               m.last_checkpoint_seq,\n               COALESCE(MAX(e.seq), 0) AS \"latest_seq!\"\n        FROM maps m\n        LEFT JOIN map_events e ON e.map_id = m.map_id\n        GROUP BY m.map_id, m.last_checkpoint_seq\n        HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "map_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "last_checkpoint_seq",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "latest_seq!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "1b328e3a26b015efe929ee12b764f3398968423a2152894aca2d8dc4d41c636c"
+}

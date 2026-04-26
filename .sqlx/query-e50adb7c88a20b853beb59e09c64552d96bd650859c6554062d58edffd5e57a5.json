@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ce.connection_id, ce.side, ce.system_id, ce.signature_id,\n               ce.wormhole_code, ce.created_at, ce.updated_at\n        FROM map_connection_ends ce\n        JOIN map_connections c ON c.connection_id = ce.connection_id\n        WHERE c.map_id = $1\n        ORDER BY ce.connection_id, ce.side\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "connection_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "side",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "system_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "signature_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "wormhole_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e50adb7c88a20b853beb59e09c64552d96bd650859c6554062d58edffd5e57a5"
+}
