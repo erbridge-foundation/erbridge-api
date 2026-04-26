@@ -183,6 +183,16 @@ pub async fn login_or_register(
                 audit::record_in_tx(
                     &mut tx,
                     None,
+                    AuditEvent::AccountRegistered {
+                        account_id: acc.id,
+                        eve_character_id: input.eve_character_id,
+                        character_name: input.name.to_string(),
+                    },
+                )
+                .await?;
+                audit::record_in_tx(
+                    &mut tx,
+                    None,
                     AuditEvent::GhostCharacterClaimed {
                         account_id: acc.id,
                         eve_character_id: input.eve_character_id,
@@ -250,6 +260,16 @@ pub async fn login_or_register(
             access_token: input.access_token,
             refresh_token: input.refresh_token,
             esi_token_expires_at: input.esi_token_expires_at,
+        },
+    )
+    .await?;
+    audit::record_in_tx(
+        &mut tx,
+        None,
+        AuditEvent::AccountRegistered {
+            account_id: acc.id,
+            eve_character_id: input.eve_character_id,
+            character_name: input.name.to_string(),
         },
     )
     .await?;

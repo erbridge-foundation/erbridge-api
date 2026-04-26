@@ -47,7 +47,7 @@ impl TryFrom<AccountRow> for Account {
 }
 
 pub async fn insert_account(tx: &mut Transaction<'_, Postgres>) -> Result<Account> {
-    let account: Account = sqlx::query_as!(
+    sqlx::query_as!(
         AccountRow,
         r#"
         INSERT INTO account DEFAULT VALUES
@@ -57,12 +57,7 @@ pub async fn insert_account(tx: &mut Transaction<'_, Postgres>) -> Result<Accoun
     .fetch_one(&mut **tx)
     .await
     .context("failed to insert account")?
-    .try_into()?;
-
-    audit::record_in_tx(tx, None, AuditEvent::AccountRegistered { account_id: account.id })
-        .await?;
-
-    Ok(account)
+    .try_into()
 }
 
 /// Reactivates an account that is in `pending_delete` status.

@@ -66,6 +66,8 @@ async fn test_registration_writes_audit_entry() {
     assert_eq!(rows[0].event_type, "account_registered");
     assert_eq!(rows[0].actor_account_id, None);
     assert_eq!(rows[0].details["account_id"], account_id.to_string());
+    assert_eq!(rows[0].details["eve_character_id"], 11111i64);
+    assert_eq!(rows[0].details["character_name"], "Tester Alpha");
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +101,8 @@ async fn test_ghost_claim_login_writes_audit_entry() {
     let registered = rows.iter().find(|r| r.event_type == "account_registered").unwrap();
     assert_eq!(registered.actor_account_id, None);
     assert_eq!(registered.details["account_id"], account_id.to_string());
+    assert_eq!(registered.details["eve_character_id"], 22222i64);
+    assert_eq!(registered.details["character_name"], "Ghost Pilot");
 
     let claimed = rows.iter().find(|r| r.event_type == "ghost_character_claimed").unwrap();
     assert_eq!(claimed.actor_account_id, None);

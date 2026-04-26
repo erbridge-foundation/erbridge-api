@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub enum AuditEvent {
-    AccountRegistered { account_id: Uuid },
+    AccountRegistered { account_id: Uuid, eve_character_id: i64, character_name: String },
     AccountDeletionRequested { account_id: Uuid },
     AccountReactivated { account_id: Uuid },
     AccountPurged { account_id: Uuid },
@@ -31,7 +31,11 @@ impl AuditEvent {
 
     fn details(&self) -> Value {
         match self {
-            Self::AccountRegistered { account_id } => json!({ "account_id": account_id }),
+            Self::AccountRegistered { account_id, eve_character_id, character_name } => json!({
+                "account_id": account_id,
+                "eve_character_id": eve_character_id,
+                "character_name": character_name,
+            }),
             Self::AccountDeletionRequested { account_id } => json!({ "account_id": account_id }),
             Self::AccountReactivated { account_id } => json!({ "account_id": account_id }),
             Self::AccountPurged { account_id } => json!({ "account_id": account_id }),
@@ -100,10 +104,16 @@ mod tests {
     #[test]
     fn account_registered_serialises_correctly() {
         let id = test_uuid();
-        let event = AuditEvent::AccountRegistered { account_id: id };
+        let event = AuditEvent::AccountRegistered {
+            account_id: id,
+            eve_character_id: 123456789,
+            character_name: "Test Pilot".into(),
+        };
         assert_eq!(event.event_type(), "account_registered");
         let d = event.details();
         assert_eq!(d["account_id"], id.to_string());
+        assert_eq!(d["eve_character_id"], 123456789i64);
+        assert_eq!(d["character_name"], "Test Pilot");
     }
 
     #[test]
