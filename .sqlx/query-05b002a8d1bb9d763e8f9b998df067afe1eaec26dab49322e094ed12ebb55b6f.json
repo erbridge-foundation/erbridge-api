@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO eve_character (eve_character_id, name, corporation_id, alliance_id, is_main)\n        VALUES ($1, $2, $3, $4, false)\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "05b002a8d1bb9d763e8f9b998df067afe1eaec26dab49322e094ed12ebb55b6f"
+}

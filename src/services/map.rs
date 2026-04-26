@@ -1,25 +1,37 @@
 use anyhow::Context;
 use serde_json::json;
 use sqlx::PgPool;
+use thiserror::Error;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::audit::{self, AuditEvent};
 use crate::db::{
-    connection as db_conn, map as db_map, map_event, route as db_route,
+    acl,
+    connection as db_conn,
+    map as db_map,
+    map_acl,
+    map_event,
+    route as db_route,
     signature as db_sig,
 };
-use crate::db::map::Map;
 use crate::db::connection::{Connection, ConnectionEnd};
+use crate::db::map::{Map, MapWithAcls};
 use crate::db::map_types::{LifeState, MassState, Side};
 use crate::db::route::RouteRow;
 use crate::db::signature::Signature;
+use crate::permissions::{Permission, effective_permission};
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum MapError {
     #[error("not found")]
     NotFound,
-    #[error("forbidden")]
+    #[error("no access")]
     Forbidden,
+    #[error("acl owner mismatch")]
+    AclOwnerMismatch,
+    #[error("slug_conflict")]
+    SlugConflict,
     #[error("a connection cannot link a system to itself")]
     SelfLoop,
     #[error("one or more systems were not found in the SDE")]
@@ -92,98 +104,235 @@ impl From<RouteRow> for Route {
     }
 }
 
-/// Fetches a map and verifies the requesting account owns it.
-async fn get_owned_map(
-    pool: &PgPool,
-    account_id: Uuid,
-    map_id: Uuid,
-) -> Result<Map, MapError> {
-    let map = db_map::find_map_by_id(pool, map_id)
-        .await
-        .context("failed to look up map")?
-        .ok_or(MapError::NotFound)?;
+// ---------------------------------------------------------------------------
+// Map listing
+// ---------------------------------------------------------------------------
 
-    if map.owner_account_id != account_id {
-        return Err(MapError::Forbidden);
+/// Returns all maps visible to the account, each annotated with only the ACLs
+/// the account can manage (owner or manage/admin member).
+pub async fn list_maps(pool: &PgPool, account_id: Uuid) -> Result<Vec<MapWithAcls>, MapError> {
+    let maps = db_map::find_maps_for_account(pool, account_id).await?;
+    if maps.is_empty() {
+        return Ok(vec![]);
     }
 
-    Ok(map)
-}
+    let manageable_acls = acl::find_acls_manageable_by_account(pool, account_id).await?;
+    let map_ids: Vec<Uuid> = maps.iter().map(|m| m.id).collect();
+    let attached = map_acl::find_acl_ids_for_maps(pool, &map_ids).await?;
 
-pub async fn create_map(
-    pool: &PgPool,
-    account_id: Uuid,
-    name: &str,
-) -> Result<Map, MapError> {
-    let mut tx = pool.begin().await.context("failed to begin transaction")?;
-
-    let map = db_map::insert_map(&mut tx, account_id, name)
-        .await
-        .context("failed to create map")?;
-
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapCreated { account_id, map_id: map.map_id, name: name.to_owned() },
-    )
-    .await
-    .context("failed to record map created audit event")?;
-
-    map_event::append_event(
-        &mut tx,
-        map.map_id,
-        "map",
-        &map.map_id.to_string(),
-        "MapCreated",
-        Some(&account_id.to_string()),
-        &json!({ "name": name }),
-    )
-    .await
-    .context("failed to append MapCreated event")?;
-
-    tx.commit().await.context("failed to commit create_map")?;
-
-    Ok(map)
+    Ok(maps
+        .into_iter()
+        .map(|m| {
+            let acls = manageable_acls
+                .iter()
+                .filter(|a| attached.get(&m.id).map_or(false, |ids| ids.contains(&a.id)))
+                .map(|a| (a.id, a.name.clone()))
+                .collect();
+            MapWithAcls {
+                id: m.id,
+                name: m.name,
+                slug: m.slug,
+                owner_account_id: m.owner_account_id,
+                description: m.description,
+                acls,
+                created_at: m.created_at,
+                updated_at: m.updated_at,
+            }
+        })
+        .collect())
 }
 
 pub async fn list_maps_for_account(pool: &PgPool, account_id: Uuid) -> Result<Vec<Map>, MapError> {
     db_map::find_maps_for_account(pool, account_id)
         .await
-        .map_err(|e| MapError::Internal(e))
+        .map_err(MapError::Internal)
 }
 
 pub async fn get_map(pool: &PgPool, account_id: Uuid, map_id: Uuid) -> Result<Map, MapError> {
-    get_owned_map(pool, account_id, map_id).await
+    let map = db_map::find_map_by_id(pool, map_id)
+        .await
+        .context("failed to look up map")?
+        .ok_or(MapError::NotFound)?;
+    require_map_permission(pool, map_id, account_id, Permission::Read).await?;
+    Ok(map)
 }
 
-pub async fn delete_map(pool: &PgPool, account_id: Uuid, map_id: Uuid) -> Result<(), MapError> {
-    let map = get_owned_map(pool, account_id, map_id).await?;
+// ---------------------------------------------------------------------------
+// Map management
+// ---------------------------------------------------------------------------
 
-    let mut tx = pool.begin().await.context("failed to begin transaction")?;
+/// Creates a new map. Returns `Err(MapError::SlugConflict)` if slug is taken.
+///
+/// If `acl_id` is provided the map is immediately attached to that ACL and
+/// the ACL's `pending_delete_at` is cleared. The caller must own the ACL.
+pub async fn create_map(
+    pool: &PgPool,
+    owner_account_id: Uuid,
+    name: &str,
+    slug: &str,
+    description: Option<&str>,
+    acl_id: Option<Uuid>,
+) -> Result<Map, MapError> {
+    if let Some(acl_id) = acl_id {
+        let acl = acl::find_acl_by_id(pool, acl_id)
+            .await
+            .context("failed to query acl")
+            .map_err(MapError::Internal)?
+            .ok_or(MapError::NotFound)?;
+        require_acl_owner_or_admin(&acl, owner_account_id)?;
+    }
+
+    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+
+    let map = db_map::insert_map(&mut tx, owner_account_id, name, slug, description)
+        .await
+        .context("insert_map")
+        .map_err(MapError::Internal)?
+        .ok_or(MapError::SlugConflict)?;
+
+    if let Some(acl_id) = acl_id {
+        map_acl::attach_acl(&mut tx, map.id, acl_id)
+            .await
+            .context("attach_acl")
+            .map_err(MapError::Internal)?;
+    }
 
     audit::record_in_tx(
         &mut tx,
-        Some(account_id),
-        AuditEvent::MapDeleted { account_id, map_id: map.map_id },
+        Some(owner_account_id),
+        AuditEvent::MapCreated { account_id: owner_account_id, map_id: map.id, name: name.to_owned() },
     )
     .await
-    .context("failed to record map deleted audit event")?;
+    .context("failed to record map created audit event")
+    .map_err(MapError::Internal)?;
 
-    db_map::delete_map(pool, map_id)
+    map_event::append_event(
+        &mut tx,
+        map.id,
+        "map",
+        &map.id.to_string(),
+        "MapCreated",
+        Some(&owner_account_id.to_string()),
+        &json!({ "name": name }),
+    )
+    .await
+    .context("failed to append MapCreated event")
+    .map_err(MapError::Internal)?;
+
+    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+    info!(map_id = %map.id, owner = %owner_account_id, slug, "map created");
+    Ok(map)
+}
+
+/// Updates a map's name, slug, and description.
+/// Caller must hold `manage` or higher.
+pub async fn update_map(
+    pool: &PgPool,
+    map_id: Uuid,
+    requesting_account_id: Uuid,
+    name: &str,
+    slug: &str,
+    description: Option<&str>,
+) -> Result<Map, MapError> {
+    require_map_permission(pool, map_id, requesting_account_id, Permission::Manage).await?;
+
+    db_map::update_map(pool, map_id, name, slug, description)
         .await
-        .context("failed to delete map")?;
+        .context("update_map")
+        .map_err(MapError::Internal)?
+        .ok_or(MapError::SlugConflict)
+}
 
-    tx.commit().await.context("failed to commit delete_map")?;
+/// Soft-deletes a map. Caller must hold `admin` or be the owner.
+pub async fn delete_map(
+    pool: &PgPool,
+    map_id: Uuid,
+    requesting_account_id: Uuid,
+) -> Result<(), MapError> {
+    require_map_permission(pool, map_id, requesting_account_id, Permission::Admin).await?;
 
+    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::MapDeleted { account_id: requesting_account_id, map_id },
+    )
+    .await
+    .context("failed to record map deleted audit event")
+    .map_err(MapError::Internal)?;
+
+    db_map::delete_map(&mut tx, map_id)
+        .await
+        .context("delete_map")
+        .map_err(MapError::Internal)?;
+
+    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+    info!(map_id = %map_id, "map deleted");
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Map–ACL attachment
+// ---------------------------------------------------------------------------
+
+/// Attaches an ACL to a map. Caller must hold `admin` or be the map owner.
+pub async fn attach_acl_to_map(
+    pool: &PgPool,
+    map_id: Uuid,
+    acl_id: Uuid,
+    requesting_account_id: Uuid,
+) -> Result<(), MapError> {
+    require_map_permission(pool, map_id, requesting_account_id, Permission::Admin).await?;
+
+    let acl = acl::find_acl_by_id(pool, acl_id)
+        .await
+        .context("failed to query acl")
+        .map_err(MapError::Internal)?
+        .ok_or(MapError::NotFound)?;
+    require_acl_owner_or_admin(&acl, requesting_account_id)?;
+
+    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+    map_acl::attach_acl(&mut tx, map_id, acl_id)
+        .await
+        .context("attach_acl")
+        .map_err(MapError::Internal)?;
+    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+
+    info!(map_id = %map_id, acl_id = %acl_id, "acl attached to map");
+    Ok(())
+}
+
+/// Detaches an ACL from a map. Caller must hold `admin` or be the map owner.
+pub async fn detach_acl_from_map(
+    pool: &PgPool,
+    map_id: Uuid,
+    acl_id: Uuid,
+    requesting_account_id: Uuid,
+) -> Result<(), MapError> {
+    require_map_permission(pool, map_id, requesting_account_id, Permission::Admin).await?;
+
+    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+    map_acl::detach_acl(&mut tx, map_id, acl_id)
+        .await
+        .context("detach_acl")
+        .map_err(MapError::Internal)?;
+    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+
+    info!(map_id = %map_id, acl_id = %acl_id, "acl detached from map");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Connection / signature / route operations
+// ---------------------------------------------------------------------------
 
 pub async fn create_connection(
     pool: &PgPool,
     account_id: Uuid,
     input: CreateConnectionInput,
 ) -> Result<(Connection, ConnectionEnd, ConnectionEnd), MapError> {
-    get_owned_map(pool, account_id, input.map_id).await?;
+    require_map_permission(pool, input.map_id, account_id, Permission::ReadWrite).await?;
 
     if input.system_a_id == input.system_b_id {
         return Err(MapError::SelfLoop);
@@ -234,7 +383,7 @@ pub async fn add_signature(
     account_id: Uuid,
     input: AddSignatureInput,
 ) -> Result<Signature, MapError> {
-    get_owned_map(pool, account_id, input.map_id).await?;
+    require_map_permission(pool, input.map_id, account_id, Permission::ReadWrite).await?;
 
     let mut tx = pool.begin().await.context("failed to begin transaction")?;
 
@@ -285,7 +434,7 @@ pub async fn link_signature(
     signature_id: Uuid,
     side: Side,
 ) -> Result<(), MapError> {
-    get_owned_map(pool, account_id, map_id).await?;
+    require_map_permission(pool, map_id, account_id, Permission::ReadWrite).await?;
 
     let conn = db_conn::find_connection(pool, connection_id)
         .await
@@ -341,7 +490,7 @@ pub async fn update_connection_metadata(
     map_id: Uuid,
     input: UpdateConnectionMetadataInput,
 ) -> Result<(), MapError> {
-    get_owned_map(pool, account_id, map_id).await?;
+    require_map_permission(pool, map_id, account_id, Permission::ReadWrite).await?;
 
     let conn = db_conn::find_connection(pool, input.connection_id)
         .await
@@ -387,7 +536,7 @@ pub async fn find_routes(
     account_id: Uuid,
     query: RouteQuery,
 ) -> Result<Vec<Route>, MapError> {
-    get_owned_map(pool, account_id, query.map_id).await?;
+    require_map_permission(pool, query.map_id, account_id, Permission::Read).await?;
 
     let max_depth = query.max_depth.clamp(1, 20);
 
@@ -403,4 +552,32 @@ pub async fn find_routes(
     .context("failed to find routes")
     .map_err(MapError::Internal)
     .map(|rows| rows.into_iter().map(Into::into).collect())
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+async fn require_map_permission(
+    pool: &PgPool,
+    map_id: Uuid,
+    account_id: Uuid,
+    required: Permission,
+) -> Result<(), MapError> {
+    let effective = effective_permission(pool, account_id, map_id)
+        .await
+        .context("failed to resolve map permission")
+        .map_err(MapError::Internal)?;
+
+    match effective {
+        Some(p) if p >= required => Ok(()),
+        Some(_) | None => Err(MapError::Forbidden),
+    }
+}
+
+fn require_acl_owner_or_admin(acl: &acl::Acl, account_id: Uuid) -> Result<(), MapError> {
+    if acl.owner_account_id == Some(account_id) {
+        return Ok(());
+    }
+    Err(MapError::AclOwnerMismatch)
 }

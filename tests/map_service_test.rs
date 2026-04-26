@@ -87,9 +87,9 @@ async fn create_map_succeeds() {
     let (_pg, pool) = common::setup_db().await;
     let account_id = make_account(&pool, 10001, "Pilot One").await;
 
-    let map = create_map(&pool, account_id, "My Map").await.unwrap();
+    let map = create_map(&pool, account_id, "My Map", "my-map", None, None).await.unwrap();
 
-    assert_eq!(map.owner_account_id, account_id);
+    assert_eq!(map.owner_account_id, Some(account_id));
     assert_eq!(map.name, "My Map");
     assert_eq!(map.retention_days, 14);
 }
@@ -99,7 +99,7 @@ async fn create_map_records_audit_event() {
     let (_pg, pool) = common::setup_db().await;
     let account_id = make_account(&pool, 10002, "Pilot Two").await;
 
-    let map = create_map(&pool, account_id, "Audit Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Audit Map", "audit-map", None, None).await.unwrap();
 
     let row = sqlx::query!(
         "SELECT event_type, details FROM audit_log WHERE event_type = 'map_created'"
@@ -109,7 +109,7 @@ async fn create_map_records_audit_event() {
     .unwrap();
 
     assert_eq!(row.event_type, "map_created");
-    assert_eq!(row.details["map_id"], map.map_id.to_string());
+    assert_eq!(row.details["map_id"], map.id.to_string());
     assert_eq!(row.details["name"], "Audit Map");
 }
 
@@ -118,11 +118,11 @@ async fn create_map_records_map_event() {
     let (_pg, pool) = common::setup_db().await;
     let account_id = make_account(&pool, 10003, "Pilot Three").await;
 
-    let map = create_map(&pool, account_id, "Event Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Event Map", "event-map", None, None).await.unwrap();
 
     let row = sqlx::query!(
         "SELECT event_type, entity_type FROM map_events WHERE map_id = $1",
-        map.map_id,
+        map.id,
     )
     .fetch_one(&pool)
     .await
@@ -140,8 +140,8 @@ async fn list_maps_returns_only_owned() {
     let account_a = make_account(&pool, 20001, "Pilot A").await;
     let account_b = make_account(&pool, 20002, "Pilot B").await;
 
-    create_map(&pool, account_a, "A's Map").await.unwrap();
-    create_map(&pool, account_b, "B's Map").await.unwrap();
+    create_map(&pool, account_a, "A's Map", "a-map", None, None).await.unwrap();
+    create_map(&pool, account_b, "B's Map", "b-map", None, None).await.unwrap();
 
     let maps_a = list_maps_for_account(&pool, account_a).await.unwrap();
     let maps_b = list_maps_for_account(&pool, account_b).await.unwrap();
@@ -159,11 +159,11 @@ async fn list_maps_returns_only_owned() {
 async fn delete_map_removes_map() {
     let (_pg, pool) = common::setup_db().await;
     let account_id = make_account(&pool, 30001, "Pilot D").await;
-    let map = create_map(&pool, account_id, "Temp Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Temp Map", "temp-map", None, None).await.unwrap();
 
-    delete_map(&pool, account_id, map.map_id).await.unwrap();
+    delete_map(&pool, map.id, account_id).await.unwrap();
 
-    let result = get_map(&pool, account_id, map.map_id).await;
+    let result = get_map(&pool, account_id, map.id).await;
     assert!(matches!(result, Err(MapError::NotFound)));
 }
 
@@ -172,9 +172,9 @@ async fn delete_map_by_non_owner_is_forbidden() {
     let (_pg, pool) = common::setup_db().await;
     let owner = make_account(&pool, 30002, "Owner").await;
     let other = make_account(&pool, 30003, "Other").await;
-    let map = create_map(&pool, owner, "Protected Map").await.unwrap();
+    let map = create_map(&pool, owner, "Protected Map", "protected-map", None, None).await.unwrap();
 
-    let result = delete_map(&pool, other, map.map_id).await;
+    let result = delete_map(&pool, map.id, other).await;
     assert!(matches!(result, Err(MapError::Forbidden)));
 }
 
@@ -187,12 +187,12 @@ async fn create_connection_succeeds() {
     seed_solar(&pool, 31000001).await;
     seed_solar(&pool, 31000002).await;
 
-    let map = create_map(&pool, account_id, "Conn Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Conn Map", "conn-map", None, None).await.unwrap();
     let (conn, end_a, end_b) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000001,
             system_b_id: 31000002,
         },
@@ -200,7 +200,7 @@ async fn create_connection_succeeds() {
     .await
     .unwrap();
 
-    assert_eq!(conn.map_id, map.map_id);
+    assert_eq!(conn.map_id, map.id);
     assert_eq!(conn.status, ConnectionStatus::Partial);
     assert_eq!(end_a.system_id, 31000001);
     assert_eq!(end_b.system_id, 31000002);
@@ -212,12 +212,12 @@ async fn create_connection_self_loop_rejected() {
     let account_id = make_account(&pool, 40002, "Loop Pilot").await;
     seed_solar(&pool, 31000010).await;
 
-    let map = create_map(&pool, account_id, "Loop Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Loop Map", "loop-map", None, None).await.unwrap();
     let result = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000010,
             system_b_id: 31000010,
         },
@@ -234,12 +234,12 @@ async fn create_connection_appends_event() {
     seed_solar(&pool, 31000020).await;
     seed_solar(&pool, 31000021).await;
 
-    let map = create_map(&pool, account_id, "Event Conn Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Event Conn Map", "event-conn-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000020,
             system_b_id: 31000021,
         },
@@ -249,7 +249,7 @@ async fn create_connection_appends_event() {
 
     let event = sqlx::query!(
         "SELECT event_type, entity_type FROM map_events WHERE map_id = $1 AND entity_type = 'connection'",
-        map.map_id,
+        map.id,
     )
     .fetch_one(&pool)
     .await
@@ -269,12 +269,12 @@ async fn link_signature_updates_status_to_linked() {
     seed_solar(&pool, 31000030).await;
     seed_solar(&pool, 31000031).await;
 
-    let map = create_map(&pool, account_id, "Link Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Link Map", "link-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000030,
             system_b_id: 31000031,
         },
@@ -286,7 +286,7 @@ async fn link_signature_updates_status_to_linked() {
         &pool,
         account_id,
         AddSignatureInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_id: 31000030,
             sig_code: "ABC-123".into(),
             sig_type: "wormhole".into(),
@@ -295,7 +295,7 @@ async fn link_signature_updates_status_to_linked() {
     .await
     .unwrap();
 
-    link_signature(&pool, account_id, map.map_id, conn.connection_id, sig.signature_id, Side::A)
+    link_signature(&pool, account_id, map.id, conn.connection_id, sig.signature_id, Side::A)
         .await
         .unwrap();
 
@@ -314,12 +314,12 @@ async fn link_signature_fully_linked() {
     seed_solar(&pool, 31000040).await;
     seed_solar(&pool, 31000041).await;
 
-    let map = create_map(&pool, account_id, "Full Link Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Full Link Map", "full-link-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000040,
             system_b_id: 31000041,
         },
@@ -331,7 +331,7 @@ async fn link_signature_fully_linked() {
         &pool,
         account_id,
         AddSignatureInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_id: 31000040,
             sig_code: "AAA-001".into(),
             sig_type: "wormhole".into(),
@@ -344,7 +344,7 @@ async fn link_signature_fully_linked() {
         &pool,
         account_id,
         AddSignatureInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_id: 31000041,
             sig_code: "BBB-001".into(),
             sig_type: "wormhole".into(),
@@ -353,10 +353,10 @@ async fn link_signature_fully_linked() {
     .await
     .unwrap();
 
-    link_signature(&pool, account_id, map.map_id, conn.connection_id, sig_a.signature_id, Side::A)
+    link_signature(&pool, account_id, map.id, conn.connection_id, sig_a.signature_id, Side::A)
         .await
         .unwrap();
-    link_signature(&pool, account_id, map.map_id, conn.connection_id, sig_b.signature_id, Side::B)
+    link_signature(&pool, account_id, map.id, conn.connection_id, sig_b.signature_id, Side::B)
         .await
         .unwrap();
 
@@ -375,12 +375,12 @@ async fn link_already_linked_signature_rejected() {
     seed_solar(&pool, 31000050).await;
     seed_solar(&pool, 31000051).await;
 
-    let map = create_map(&pool, account_id, "Dup Link Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Dup Link Map", "dup-link-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000050,
             system_b_id: 31000051,
         },
@@ -392,7 +392,7 @@ async fn link_already_linked_signature_rejected() {
         &pool,
         account_id,
         AddSignatureInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_id: 31000050,
             sig_code: "DUP-001".into(),
             sig_type: "wormhole".into(),
@@ -401,14 +401,14 @@ async fn link_already_linked_signature_rejected() {
     .await
     .unwrap();
 
-    link_signature(&pool, account_id, map.map_id, conn.connection_id, sig.signature_id, Side::A)
+    link_signature(&pool, account_id, map.id, conn.connection_id, sig.signature_id, Side::A)
         .await
         .unwrap();
 
     let result = link_signature(
         &pool,
         account_id,
-        map.map_id,
+        map.id,
         conn.connection_id,
         sig.signature_id,
         Side::A,
@@ -427,12 +427,12 @@ async fn update_metadata_propagates_to_signatures() {
     seed_solar(&pool, 31000060).await;
     seed_solar(&pool, 31000061).await;
 
-    let map = create_map(&pool, account_id, "Meta Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Meta Map", "meta-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000060,
             system_b_id: 31000061,
         },
@@ -444,7 +444,7 @@ async fn update_metadata_propagates_to_signatures() {
         &pool,
         account_id,
         AddSignatureInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_id: 31000060,
             sig_code: "META-001".into(),
             sig_type: "wormhole".into(),
@@ -453,14 +453,14 @@ async fn update_metadata_propagates_to_signatures() {
     .await
     .unwrap();
 
-    link_signature(&pool, account_id, map.map_id, conn.connection_id, sig.signature_id, Side::A)
+    link_signature(&pool, account_id, map.id, conn.connection_id, sig.signature_id, Side::A)
         .await
         .unwrap();
 
     update_connection_metadata(
         &pool,
         account_id,
-        map.map_id,
+        map.id,
         UpdateConnectionMetadataInput {
             connection_id: conn.connection_id,
             life_state: Some(LifeState::Eol),
@@ -486,12 +486,12 @@ async fn update_metadata_appends_event() {
     seed_solar(&pool, 31000070).await;
     seed_solar(&pool, 31000071).await;
 
-    let map = create_map(&pool, account_id, "Meta Event Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Meta Event Map", "meta-event-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000070,
             system_b_id: 31000071,
         },
@@ -502,7 +502,7 @@ async fn update_metadata_appends_event() {
     update_connection_metadata(
         &pool,
         account_id,
-        map.map_id,
+        map.id,
         UpdateConnectionMetadataInput {
             connection_id: conn.connection_id,
             life_state: Some(LifeState::Eol),
@@ -514,7 +514,7 @@ async fn update_metadata_appends_event() {
 
     let event = sqlx::query!(
         "SELECT event_type FROM map_events WHERE map_id = $1 AND event_type = 'ConnectionMetadataUpdated'",
-        map.map_id,
+        map.id,
     )
     .fetch_one(&pool)
     .await
@@ -533,14 +533,14 @@ async fn find_routes_returns_paths() {
     seed_solar(&pool, 31000101).await;
     seed_solar(&pool, 31000102).await;
 
-    let map = create_map(&pool, account_id, "Route Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Route Map", "route-map", None, None).await.unwrap();
 
     // Chain: 100 → 101 → 102
     create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000100,
             system_b_id: 31000101,
         },
@@ -552,7 +552,7 @@ async fn find_routes_returns_paths() {
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000101,
             system_b_id: 31000102,
         },
@@ -564,7 +564,7 @@ async fn find_routes_returns_paths() {
         &pool,
         account_id,
         RouteQuery {
-            map_id: map.map_id,
+            map_id: map.id,
             start_system_id: 31000100,
             max_depth: 5,
             exclude_eol: false,
@@ -586,12 +586,12 @@ async fn find_routes_excludes_eol() {
     seed_solar(&pool, 31000110).await;
     seed_solar(&pool, 31000111).await;
 
-    let map = create_map(&pool, account_id, "EOL Map").await.unwrap();
+    let map = create_map(&pool, account_id, "EOL Map", "eol-map", None, None).await.unwrap();
     let (conn, _, _) = create_connection(
         &pool,
         account_id,
         CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 31000110,
             system_b_id: 31000111,
         },
@@ -603,7 +603,7 @@ async fn find_routes_excludes_eol() {
     update_connection_metadata(
         &pool,
         account_id,
-        map.map_id,
+        map.id,
         UpdateConnectionMetadataInput {
             connection_id: conn.connection_id,
             life_state: Some(LifeState::Eol),
@@ -617,7 +617,7 @@ async fn find_routes_excludes_eol() {
         &pool,
         account_id,
         RouteQuery {
-            map_id: map.map_id,
+            map_id: map.id,
             start_system_id: 31000110,
             max_depth: 5,
             exclude_eol: true,
@@ -637,14 +637,14 @@ async fn find_routes_clamps_depth() {
     let account_id = make_account(&pool, 70003, "Depth Pilot").await;
     seed_solar(&pool, 31000120).await;
 
-    let map = create_map(&pool, account_id, "Depth Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Depth Map", "depth-map", None, None).await.unwrap();
 
     // max_depth=100 should be clamped to 20 without error
     let routes = find_routes(
         &pool,
         account_id,
         RouteQuery {
-            map_id: map.map_id,
+            map_id: map.id,
             start_system_id: 31000120,
             max_depth: 100,
             exclude_eol: false,

@@ -1,7 +1,10 @@
 pub mod account;
+pub mod acl;
+pub mod acl_member;
 pub mod character;
 pub mod connection;
 pub mod map;
+pub mod map_acl;
 pub mod map_checkpoint;
 pub mod map_event;
 pub mod map_types;

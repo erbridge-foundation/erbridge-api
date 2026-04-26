@@ -4,10 +4,12 @@ use std::time::Duration;
 use dashmap::DashMap;
 use erbridge_api::{
     config::{Config, EsiClient},
+    dto::auth::SessionClaims,
     esi::discovery::EsiMetadata,
     state::AppState,
     tasks::character_location_poll::LocationEvent,
 };
+use jsonwebtoken::{EncodingKey, Header, encode};
 use jsonwebtoken::jwk::JwkSet;
 use pg_embed::pg_enums::PgAuthMethod;
 use pg_embed::pg_fetch::{PgFetchSettings, PG_V17};
@@ -15,6 +17,7 @@ use pg_embed::postgres::{PgEmbed, PgSettings};
 use reqwest::Client;
 use sha2::{Digest, Sha256};
 use tokio::sync::{RwLock, broadcast, mpsc};
+use uuid::Uuid;
 
 const TEST_SECRET: &str = "test-encryption-secret";
 
@@ -110,4 +113,41 @@ pub fn test_state(pool: sqlx::PgPool) -> Arc<AppState> {
         online_poll_tx,
         location_subs,
     })
+}
+
+/// Like `test_state` but uses the given `esi_base` URL (e.g. a wiremock server URI).
+#[allow(dead_code)]
+pub fn test_state_with_esi(pool: sqlx::PgPool, esi_base: String) -> Arc<AppState> {
+    let state = test_state(pool);
+    let mut config = state.config.clone();
+    config.esi_base = esi_base;
+    Arc::new(AppState {
+        config,
+        db: state.db.clone(),
+        http: state.http.clone(),
+        esi_metadata: state.esi_metadata.clone(),
+        jwks: Arc::clone(&state.jwks),
+        online_poll_tx: state.online_poll_tx.clone(),
+        location_subs: Arc::clone(&state.location_subs),
+    })
+}
+
+/// Issues a signed erbridge session JWT for the given `account_id`, valid for 1 hour.
+#[allow(dead_code)]
+pub fn make_session_jwt(account_id: Uuid, jwt_key: &[u8; 32]) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let exp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600;
+
+    let claims = SessionClaims { account_id, exp };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(jwt_key),
+    )
+    .unwrap()
 }

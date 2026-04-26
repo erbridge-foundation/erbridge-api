@@ -32,12 +32,12 @@ async fn checkpoint_all_maps(state: &AppState) -> anyhow::Result<()> {
     // Find maps where the latest event seq exceeds the last checkpoint seq.
     let maps_needing_checkpoint = sqlx::query!(
         r#"
-        SELECT m.map_id,
+        SELECT m.id AS map_id,
                m.last_checkpoint_seq,
                COALESCE(MAX(e.seq), 0) AS "latest_seq!"
-        FROM maps m
-        LEFT JOIN map_events e ON e.map_id = m.map_id
-        GROUP BY m.map_id, m.last_checkpoint_seq
+        FROM map m
+        LEFT JOIN map_events e ON e.map_id = m.id
+        GROUP BY m.id, m.last_checkpoint_seq
         HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq
         "#,
     )

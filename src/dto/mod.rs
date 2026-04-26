@@ -1,3 +1,4 @@
+pub mod acl;
 pub mod auth;
 pub mod character;
 pub mod envelope;

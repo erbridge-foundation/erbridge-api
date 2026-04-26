@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, name, owner_account_id, pending_delete_at, created_at, updated_at\n        FROM acl\n        WHERE owner_account_id = $1\n           OR EXISTS (\n               SELECT 1\n               FROM acl_member am\n               JOIN eve_character ec ON ec.id = am.character_id\n               WHERE am.acl_id = acl.id\n                 AND am.member_type = 'character'\n                 AND am.permission IN ('manage', 'admin')\n                 AND ec.account_id = $1\n           )\n        ORDER BY name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "owner_account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "pending_delete_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "4db276877ba2b186f29db26f3bac7dcfc64ae6c19bcfa73597e3d79fa3e3175b"
+}

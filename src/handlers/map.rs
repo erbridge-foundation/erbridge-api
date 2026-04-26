@@ -4,34 +4,39 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    response::IntoResponse,
 };
 use tracing::warn;
 use uuid::Uuid;
+
+use validator::Validate;
 
 use crate::{
     dto::{
         envelope::ApiResponse,
         map::{
-            AddSignatureRequest, ConnectionEndResponse, ConnectionResponse, CreateConnectionRequest,
-            CreateConnectionResponse, CreateMapRequest, LinkSignatureRequest, MapListResponse,
-            MapResponse, RouteListResponse, RouteQueryParams, RouteResponse, SignatureResponse,
-            UpdateConnectionMetadataRequest,
+            AddSignatureRequest, AttachAclRequest, ConnectionEndResponse, ConnectionResponse,
+            CreateConnectionRequest, CreateConnectionResponse, CreateMapRequest, LinkSignatureRequest,
+            MapListResponse, MapResponse, RouteListResponse, RouteQueryParams, RouteResponse,
+            SignatureResponse, UpdateConnectionMetadataRequest, UpdateMapRequest,
         },
     },
     extractors::AccountId,
     services::map::{
         AddSignatureInput, CreateConnectionInput, MapError, RouteQuery, UpdateConnectionMetadataInput,
+        attach_acl_to_map, create_map, delete_map, detach_acl_from_map, list_maps, update_map,
     },
     state::AppState,
 };
 use crate::db::connection::{Connection, ConnectionEnd};
-use crate::db::map::Map;
 use crate::db::signature::Signature;
 
 fn map_err(e: MapError) -> (StatusCode, Json<ApiResponse<()>>) {
     let status = match &e {
         MapError::NotFound => StatusCode::NOT_FOUND,
         MapError::Forbidden => StatusCode::FORBIDDEN,
+        MapError::SlugConflict => StatusCode::UNPROCESSABLE_ENTITY,
+        MapError::AclOwnerMismatch => StatusCode::FORBIDDEN,
         MapError::SelfLoop
         | MapError::SystemNotFound
         | MapError::SignatureAlreadyLinked
@@ -43,16 +48,6 @@ fn map_err(e: MapError) -> (StatusCode, Json<ApiResponse<()>>) {
         }
     };
     (status, Json(ApiResponse::error(e.to_string())))
-}
-
-fn map_to_response(m: Map) -> MapResponse {
-    MapResponse {
-        map_id: m.map_id,
-        owner_account_id: m.owner_account_id,
-        name: m.name,
-        created_at: m.created_at,
-        retention_days: m.retention_days,
-    }
 }
 
 fn connection_to_response(c: Connection) -> ConnectionResponse {
@@ -97,62 +92,148 @@ fn signature_to_response(s: Signature) -> SignatureResponse {
     }
 }
 
-pub async fn create_map(
+// ---------------------------------------------------------------------------
+// GET /api/v1/maps
+// ---------------------------------------------------------------------------
+
+pub async fn list_maps_handler(
+    State(state): State<Arc<AppState>>,
+    AccountId(account_id): AccountId,
+) -> Result<Json<ApiResponse<MapListResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+    let maps = list_maps(&state.db, account_id)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, %account_id, "failed to list maps");
+            map_err(e)
+        })?;
+
+    Ok(Json(ApiResponse::ok(MapListResponse {
+        maps: maps.into_iter().map(MapResponse::from).collect(),
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/maps
+// ---------------------------------------------------------------------------
+
+pub async fn create_map_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Json(body): Json<CreateMapRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<MapResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
-    let name = body.name.trim().to_owned();
-    if name.is_empty() || name.len() > 100 {
-        return Err((
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ApiResponse::error("name must be 1–100 characters")),
-        ));
-    }
+    body.validate().map_err(|e| {
+        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(e.to_string())))
+    })?;
 
-    let map = crate::services::map::create_map(&state.db, account_id, &name)
-        .await
-        .map_err(map_err)?;
+    let map = create_map(
+        &state.db,
+        account_id,
+        &body.name,
+        &body.slug,
+        body.description.as_deref(),
+        body.acl_id,
+    )
+    .await
+    .map_err(|e| {
+        warn!(error = %e, %account_id, "failed to create map");
+        map_err(e)
+    })?;
 
-    Ok((StatusCode::CREATED, Json(ApiResponse::ok(map_to_response(map)))))
+    Ok((StatusCode::CREATED, Json(ApiResponse::ok(MapResponse::from(map)))))
 }
 
-pub async fn list_maps(
-    State(state): State<Arc<AppState>>,
-    AccountId(account_id): AccountId,
-) -> Result<Json<ApiResponse<MapListResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
-    let maps = crate::services::map::list_maps_for_account(&state.db, account_id)
-        .await
-        .map_err(map_err)?;
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/maps/:map_id
+// ---------------------------------------------------------------------------
 
-    Ok(Json(ApiResponse::ok(MapListResponse {
-        maps: maps.into_iter().map(map_to_response).collect(),
-    })))
-}
-
-pub async fn get_map(
+pub async fn update_map_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
+    Json(body): Json<UpdateMapRequest>,
 ) -> Result<Json<ApiResponse<MapResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
-    let map = crate::services::map::get_map(&state.db, account_id, map_id)
-        .await
-        .map_err(map_err)?;
+    body.validate().map_err(|e| {
+        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(e.to_string())))
+    })?;
 
-    Ok(Json(ApiResponse::ok(map_to_response(map))))
+    let map = update_map(
+        &state.db,
+        map_id,
+        account_id,
+        &body.name,
+        &body.slug,
+        body.description.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        warn!(error = %e, %map_id, %account_id, "failed to update map");
+        map_err(e)
+    })?;
+
+    Ok(Json(ApiResponse::ok(MapResponse::from(map))))
 }
 
-pub async fn delete_map(
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/maps/:map_id
+// ---------------------------------------------------------------------------
+
+pub async fn delete_map_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
-    crate::services::map::delete_map(&state.db, account_id, map_id)
+    delete_map(&state.db, map_id, account_id)
         .await
-        .map_err(map_err)?;
+        .map_err(|e| {
+            warn!(error = %e, %map_id, %account_id, "failed to delete map");
+            map_err(e)
+        })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/maps/:map_id/acls
+// ---------------------------------------------------------------------------
+
+pub async fn attach_acl(
+    State(state): State<Arc<AppState>>,
+    AccountId(account_id): AccountId,
+    Path(map_id): Path<Uuid>,
+    Json(body): Json<AttachAclRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
+    attach_acl_to_map(&state.db, map_id, body.acl_id, account_id)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, %map_id, %account_id, "failed to attach acl to map");
+            map_err(e)
+        })?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/maps/:map_id/acls/:acl_id
+// ---------------------------------------------------------------------------
+
+pub async fn detach_acl(
+    State(state): State<Arc<AppState>>,
+    AccountId(account_id): AccountId,
+    Path((map_id, acl_id)): Path<(Uuid, Uuid)>,
+) -> impl IntoResponse {
+    match detach_acl_from_map(&state.db, map_id, acl_id, account_id).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            warn!(error = %e, %map_id, %acl_id, %account_id, "failed to detach acl from map");
+            let (status, body) = map_err(e);
+            (status, body).into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/maps/:map_id/connections
+// ---------------------------------------------------------------------------
 
 pub async fn create_connection(
     State(state): State<Arc<AppState>>,
@@ -182,6 +263,10 @@ pub async fn create_connection(
     ))
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/v1/maps/:map_id/signatures
+// ---------------------------------------------------------------------------
+
 pub async fn add_signature(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
@@ -204,6 +289,10 @@ pub async fn add_signature(
     Ok((StatusCode::CREATED, Json(ApiResponse::ok(signature_to_response(sig)))))
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/v1/maps/:map_id/connections/:conn_id/link
+// ---------------------------------------------------------------------------
+
 pub async fn link_signature(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
@@ -223,6 +312,10 @@ pub async fn link_signature(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/maps/:map_id/connections/:conn_id/metadata
+// ---------------------------------------------------------------------------
 
 pub async fn update_connection_metadata(
     State(state): State<Arc<AppState>>,
@@ -245,6 +338,10 @@ pub async fn update_connection_metadata(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/maps/:map_id/routes
+// ---------------------------------------------------------------------------
 
 pub async fn find_routes(
     State(state): State<Arc<AppState>>,

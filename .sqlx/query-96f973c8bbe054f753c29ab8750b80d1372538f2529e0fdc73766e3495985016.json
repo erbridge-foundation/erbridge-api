@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT DISTINCT m.id, m.name, m.slug, m.owner_account_id, m.description,\n                        m.deleted, m.created_at, m.updated_at,\n                        m.last_checkpoint_seq, m.last_checkpoint_at, m.retention_days\n        FROM map m\n        WHERE m.deleted = false\n          AND (\n              m.owner_account_id = $1\n              OR EXISTS (\n                  SELECT 1\n                  FROM map_acl ma\n                  JOIN acl_member am ON am.acl_id = ma.acl_id\n                  JOIN eve_character ec ON ec.account_id = $1\n                  WHERE ma.map_id = m.id\n                    AND am.permission != 'deny'\n                    AND (\n                        (am.member_type = 'character' AND am.character_id = ec.id)\n                     OR (am.member_type = 'corporation' AND am.eve_entity_id = ec.corporation_id)\n                     OR (am.member_type = 'alliance' AND am.eve_entity_id = ec.alliance_id\n                         AND ec.alliance_id IS NOT NULL)\n                    )\n              )\n          )\n        ORDER BY m.name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "owner_account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "deleted",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "last_checkpoint_seq",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_checkpoint_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "retention_days",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "96f973c8bbe054f753c29ab8750b80d1372538f2529e0fdc73766e3495985016"
+}

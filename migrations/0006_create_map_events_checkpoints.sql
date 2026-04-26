@@ -1,6 +1,6 @@
 CREATE TABLE map_events (
     seq         BIGSERIAL   PRIMARY KEY,
-    map_id      UUID        NOT NULL REFERENCES maps(map_id) ON DELETE CASCADE,
+    map_id      UUID        NOT NULL REFERENCES map(id) ON DELETE CASCADE,
     entity_type TEXT        NOT NULL,
     entity_id   TEXT        NOT NULL,
     event_type  TEXT        NOT NULL,
@@ -14,7 +14,7 @@ CREATE INDEX map_events_map_time_idx ON map_events (map_id, event_time);
 
 CREATE TABLE map_checkpoints (
     checkpoint_id     BIGSERIAL   PRIMARY KEY,
-    map_id            UUID        NOT NULL REFERENCES maps(map_id) ON DELETE CASCADE,
+    map_id            UUID        NOT NULL REFERENCES map(id) ON DELETE CASCADE,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_included_seq BIGINT      NOT NULL,
     checkpoint_version INT        NOT NULL DEFAULT 1,

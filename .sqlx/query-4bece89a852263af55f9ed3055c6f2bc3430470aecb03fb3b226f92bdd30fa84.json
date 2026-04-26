@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM acl\n        WHERE pending_delete_at IS NOT NULL\n          AND pending_delete_at < now() - ($1 * interval '1 day')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4bece89a852263af55f9ed3055c6f2bc3430470aecb03fb3b226f92bdd30fa84"
+}

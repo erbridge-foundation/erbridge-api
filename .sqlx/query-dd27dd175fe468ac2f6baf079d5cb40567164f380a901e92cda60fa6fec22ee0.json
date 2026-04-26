@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT am.permission\n        FROM map_acl ma\n        JOIN acl_member am ON am.acl_id = ma.acl_id\n        JOIN eve_character ec ON ec.account_id = $2\n        WHERE ma.map_id = $1\n          AND (\n              -- direct character match\n              (am.member_type = 'character' AND am.character_id = ec.id)\n              -- corporation match\n          OR  (am.member_type = 'corporation' AND am.eve_entity_id = ec.corporation_id)\n              -- alliance match\n          OR  (am.member_type = 'alliance' AND am.eve_entity_id = ec.alliance_id\n               AND ec.alliance_id IS NOT NULL)\n          )\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "permission",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "dd27dd175fe468ac2f6baf079d5cb40567164f380a901e92cda60fa6fec22ee0"
+}

@@ -1,29 +1,95 @@
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
+use validator::Validate;
 
+use crate::db::map::{Map, MapWithAcls};
 use crate::db::map_types::{LifeState, MassState, Side};
 
-// ── Map ──────────────────────────────────────────────────────────────────────
+static SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap());
 
-#[derive(Debug, Deserialize)]
-pub struct CreateMapRequest {
+// ── Map ───────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AclSummary {
+    pub id: Uuid,
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MapResponse {
-    pub map_id: Uuid,
-    pub owner_account_id: Uuid,
+    pub id: Uuid,
     pub name: String,
+    pub slug: String,
+    pub owner_account_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub acls: Vec<AclSummary>,
     pub created_at: DateTime<Utc>,
-    pub retention_days: i32,
+    pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize)]
+impl From<Map> for MapResponse {
+    fn from(m: Map) -> Self {
+        Self {
+            id: m.id,
+            name: m.name,
+            slug: m.slug,
+            owner_account_id: m.owner_account_id,
+            description: m.description,
+            acls: vec![],
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        }
+    }
+}
+
+impl From<MapWithAcls> for MapResponse {
+    fn from(m: MapWithAcls) -> Self {
+        Self {
+            id: m.id,
+            name: m.name,
+            slug: m.slug,
+            owner_account_id: m.owner_account_id,
+            description: m.description,
+            acls: m.acls.into_iter().map(|(id, name)| AclSummary { id, name }).collect(),
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MapListResponse {
     pub maps: Vec<MapResponse>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateMapRequest {
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
+    #[validate(length(min = 1, max = 100), regex(path = *SLUG_RE))]
+    pub slug: String,
+    #[validate(length(max = 500))]
+    pub description: Option<String>,
+    pub acl_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateMapRequest {
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
+    #[validate(length(min = 1, max = 100), regex(path = *SLUG_RE))]
+    pub slug: String,
+    #[validate(length(max = 500))]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AttachAclRequest {
+    pub acl_id: Uuid,
 }
 
 // ── Connection ────────────────────────────────────────────────────────────────

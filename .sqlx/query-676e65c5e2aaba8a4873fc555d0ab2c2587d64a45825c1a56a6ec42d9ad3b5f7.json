@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT map_id, acl_id FROM map_acl WHERE map_id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "map_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "acl_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "676e65c5e2aaba8a4873fc555d0ab2c2587d64a45825c1a56a6ec42d9ad3b5f7"
+}

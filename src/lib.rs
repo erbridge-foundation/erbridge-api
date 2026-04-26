@@ -7,6 +7,7 @@ pub mod esi;
 pub mod extractors;
 pub mod handlers;
 pub mod middleware;
+pub mod permissions;
 pub mod services;
 pub mod state;
 pub mod tasks;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     middleware::from_fn_with_state,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
 };
 use dashmap::DashMap;
 use jsonwebtoken::jwk::JwkSet;
@@ -58,19 +59,30 @@ pub fn router(
 }
 
 fn build_router(state: Arc<AppState>) -> Router {
-    // Routes that require an active (non-pending-delete) account.
     let authenticated = Router::new()
         // Account / character management
         .route("/api/v1/me", get(handlers::auth::me))
         .route("/api/v1/me", delete(handlers::character::delete_account))
-        // Auth endpoints that required an authenticated account
+        // Auth endpoints that require an authenticated account
         .route("/auth/characters/add", get(handlers::auth::add_character))
         .route("/auth/logout", post(handlers::auth::logout))
         // Map CRUD
-        .route("/api/v1/maps", post(handlers::map::create_map))
-        .route("/api/v1/maps", get(handlers::map::list_maps))
-        .route("/api/v1/maps/{map_id}", get(handlers::map::get_map))
-        .route("/api/v1/maps/{map_id}", delete(handlers::map::delete_map))
+        .route("/api/v1/maps", get(handlers::map::list_maps_handler))
+        .route("/api/v1/maps", post(handlers::map::create_map_handler))
+        .route("/api/v1/maps/{map_id}", patch(handlers::map::update_map_handler))
+        .route("/api/v1/maps/{map_id}", delete(handlers::map::delete_map_handler))
+        // Map–ACL attachment
+        .route("/api/v1/maps/{map_id}/acls", post(handlers::map::attach_acl))
+        .route("/api/v1/maps/{map_id}/acls/{acl_id}", delete(handlers::map::detach_acl))
+        // ACL management
+        .route("/api/v1/acls", get(handlers::acl::list_acls))
+        .route("/api/v1/acls", post(handlers::acl::create))
+        .route("/api/v1/acls/{acl_id}", put(handlers::acl::rename))
+        .route("/api/v1/acls/{acl_id}", delete(handlers::acl::delete))
+        .route("/api/v1/acls/{acl_id}/members", get(handlers::acl::list_members))
+        .route("/api/v1/acls/{acl_id}/members", post(handlers::acl::add))
+        .route("/api/v1/acls/{acl_id}/members/{member_id}", patch(handlers::acl::update_member))
+        .route("/api/v1/acls/{acl_id}/members/{member_id}", delete(handlers::acl::delete_member))
         // Connection and signature operations
         .route("/api/v1/maps/{map_id}/connections", post(handlers::map::create_connection))
         .route("/api/v1/maps/{map_id}/signatures", post(handlers::map::add_signature))

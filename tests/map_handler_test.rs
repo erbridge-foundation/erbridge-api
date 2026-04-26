@@ -109,12 +109,12 @@ async fn post_maps_creates_map() {
     let resp = server
         .post("/api/v1/maps")
         .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
-        .json(&json!({ "name": "Handler Map" }))
+        .json(&json!({ "name": "Handler Map", "slug": "handler-map" }))
         .await;
 
     resp.assert_status(StatusCode::CREATED);
     let body: serde_json::Value = resp.json();
-    assert!(body["data"]["map_id"].is_string());
+    assert!(body["data"]["id"].is_string());
     assert_eq!(body["data"]["name"], "Handler Map");
 }
 
@@ -126,7 +126,7 @@ async fn post_maps_without_auth_returns_401() {
 
     let resp = server
         .post("/api/v1/maps")
-        .json(&json!({ "name": "Unauth Map" }))
+        .json(&json!({ "name": "Unauth Map", "slug": "unauth-map" }))
         .await;
 
     resp.assert_status_unauthorized();
@@ -144,7 +144,7 @@ async fn post_maps_with_empty_name_returns_422() {
     let resp = server
         .post("/api/v1/maps")
         .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
-        .json(&json!({ "name": "" }))
+        .json(&json!({ "name": "", "slug": "noname" }))
         .await;
 
     resp.assert_status_unprocessable_entity();
@@ -159,7 +159,7 @@ async fn get_maps_returns_list() {
     let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
 
     let account_id = make_account(&pool, 80003, "List Pilot").await;
-    create_map(&pool, account_id, "Listed Map").await.unwrap();
+    create_map(&pool, account_id, "Listed Map", "listed-map", None, None).await.unwrap();
 
     let jwt = session_jwt(account_id, &state.config.jwt_key);
     let resp = server
@@ -185,11 +185,11 @@ async fn delete_map_by_non_owner_returns_403() {
     let owner = make_account(&pool, 80004, "Owner Pilot").await;
     let other = make_account(&pool, 80005, "Other Pilot").await;
 
-    let map = create_map(&pool, owner, "Owned Map").await.unwrap();
+    let map = create_map(&pool, owner, "Owned Map", "owned-map", None, None).await.unwrap();
     let other_jwt = session_jwt(other, &state.config.jwt_key);
 
     let resp = server
-        .delete(&format!("/api/v1/maps/{}", map.map_id))
+        .delete(&format!("/api/v1/maps/{}", map.id))
         .add_cookie(Cookie::new(SESSION_COOKIE, other_jwt))
         .await;
 
@@ -207,11 +207,11 @@ async fn post_connections_self_loop_returns_422() {
     let account_id = make_account(&pool, 80006, "Loop Pilot Handler").await;
     seed_solar(&pool, 41000001).await;
 
-    let map = create_map(&pool, account_id, "Loop Map Handler").await.unwrap();
+    let map = create_map(&pool, account_id, "Loop Map Handler", "loop-map-handler", None, None).await.unwrap();
     let jwt = session_jwt(account_id, &state.config.jwt_key);
 
     let resp = server
-        .post(&format!("/api/v1/maps/{}/connections", map.map_id))
+        .post(&format!("/api/v1/maps/{}/connections", map.id))
         .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
         .json(&json!({ "system_a_id": 41000001, "system_b_id": 41000001 }))
         .await;
@@ -231,14 +231,14 @@ async fn get_routes_returns_list() {
     seed_solar(&pool, 41000010).await;
     seed_solar(&pool, 41000011).await;
 
-    let map = create_map(&pool, account_id, "Route Handler Map").await.unwrap();
+    let map = create_map(&pool, account_id, "Route Handler Map", "route-handler-map", None, None).await.unwrap();
 
     // Create a connection so there's at least one reachable system.
     erbridge_api::services::map::create_connection(
         &pool,
         account_id,
         erbridge_api::services::map::CreateConnectionInput {
-            map_id: map.map_id,
+            map_id: map.id,
             system_a_id: 41000010,
             system_b_id: 41000011,
         },
@@ -250,7 +250,7 @@ async fn get_routes_returns_list() {
     let resp = server
         .get(&format!(
             "/api/v1/maps/{}/routes?start_system_id=41000010",
-            map.map_id
+            map.id
         ))
         .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
         .await;

@@ -1,18 +1,22 @@
-CREATE TABLE maps (
-    map_id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_account_id    UUID        NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+CREATE TABLE map (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     name                TEXT        NOT NULL,
+    slug                TEXT        NOT NULL UNIQUE,
+    owner_account_id    UUID        REFERENCES account(id) ON DELETE SET NULL,
+    description         TEXT,
+    deleted             BOOLEAN     NOT NULL DEFAULT false,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_checkpoint_seq BIGINT      NOT NULL DEFAULT 0,
     last_checkpoint_at  TIMESTAMPTZ,
     retention_days      INT         NOT NULL DEFAULT 14
 );
 
-CREATE INDEX maps_owner_idx ON maps (owner_account_id);
+CREATE INDEX map_owner_idx ON map (owner_account_id);
 
 CREATE TABLE map_connections (
     connection_id UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    map_id        UUID        NOT NULL REFERENCES maps(map_id) ON DELETE CASCADE,
+    map_id        UUID        NOT NULL REFERENCES map(id) ON DELETE CASCADE,
     status        TEXT        NOT NULL DEFAULT 'partial'
                       CHECK (status IN ('tentative','partial','linked','fully_linked','collapsed','expired')),
     life_state    TEXT        CHECK (life_state IN ('fresh','eol') OR life_state IS NULL),
@@ -42,7 +46,7 @@ CREATE INDEX map_connection_ends_system_connection_idx ON map_connection_ends (s
 
 CREATE TABLE map_signatures (
     signature_id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    map_id              UUID        NOT NULL REFERENCES maps(map_id) ON DELETE CASCADE,
+    map_id              UUID        NOT NULL REFERENCES map(id) ON DELETE CASCADE,
     system_id           BIGINT      NOT NULL REFERENCES sde_solar_system(solar_system_id),
     sig_code            TEXT        NOT NULL,
     sig_type            TEXT        NOT NULL,

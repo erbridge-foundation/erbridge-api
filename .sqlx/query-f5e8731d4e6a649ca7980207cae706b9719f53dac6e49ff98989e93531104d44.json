@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT EXISTS (\n            SELECT 1\n            FROM acl_member am\n            JOIN eve_character ec ON ec.id = am.character_id\n            WHERE am.acl_id = $1\n              AND am.member_type = 'character'\n              AND ec.account_id = $2\n              AND am.permission = ANY($3)\n        )\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f5e8731d4e6a649ca7980207cae706b9719f53dac6e49ff98989e93531104d44"
+}

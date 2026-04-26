@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT m.map_id,\n               m.last_checkpoint_seq,\n               COALESCE(MAX(e.seq), 0) AS \"latest_seq!\"\n        FROM maps m\n        LEFT JOIN map_events e ON e.map_id = m.map_id\n        GROUP BY m.map_id, m.last_checkpoint_seq\n        HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq\n        ",
+  "query": "\n        SELECT m.id AS map_id,\n               m.last_checkpoint_seq,\n               COALESCE(MAX(e.seq), 0) AS \"latest_seq!\"\n        FROM map m\n        LEFT JOIN map_events e ON e.map_id = m.id\n        GROUP BY m.id, m.last_checkpoint_seq\n        HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq\n        ",
   "describe": {
     "columns": [
       {
@@ -28,5 +28,5 @@
       null
     ]
   },
-  "hash": "1b328e3a26b015efe929ee12b764f3398968423a2152894aca2d8dc4d41c636c"
+  "hash": "fe2fdb0ea1a2a420acf595ae84a9c23b2afa6cd0a8f19eb5b3227b91119aa4ad"
 }
