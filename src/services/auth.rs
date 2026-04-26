@@ -59,6 +59,7 @@ pub async fn attach_character_to_account(
                     AuditEvent::GhostCharacterClaimed {
                         account_id: input.account_id,
                         eve_character_id: input.eve_character_id,
+                        character_name: input.name.to_string(),
                     },
                 )
                 .await?;
@@ -196,6 +197,7 @@ pub async fn login_or_register(
                     AuditEvent::GhostCharacterClaimed {
                         account_id: acc.id,
                         eve_character_id: input.eve_character_id,
+                        character_name: input.name.to_string(),
                     },
                 )
                 .await?;

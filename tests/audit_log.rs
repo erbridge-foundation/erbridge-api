@@ -108,6 +108,7 @@ async fn test_ghost_claim_login_writes_audit_entry() {
     assert_eq!(claimed.actor_account_id, None);
     assert_eq!(claimed.details["account_id"], account_id.to_string());
     assert_eq!(claimed.details["eve_character_id"], 22222i64);
+    assert_eq!(claimed.details["character_name"], "Ghost Pilot");
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +149,8 @@ async fn test_character_added_writes_audit_entry() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].event_type, "character_added");
     assert_eq!(rows[0].actor_account_id, Some(account_id));
-    assert_eq!(rows[0].details["account_id"], account_id.to_string());
+    // account_id is in actor_account_id, not repeated in details
+    assert!(rows[0].details.get("account_id").is_none());
     assert_eq!(rows[0].details["eve_character_id"], 44444i64);
     assert_eq!(rows[0].details["character_name"], "Second Char");
 }
@@ -202,7 +204,9 @@ async fn test_ghost_claim_attach_writes_audit_entry() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].event_type, "ghost_character_claimed");
     assert_eq!(rows[0].actor_account_id, Some(account_id));
+    assert_eq!(rows[0].details["account_id"], account_id.to_string());
     assert_eq!(rows[0].details["eve_character_id"], 66666i64);
+    assert_eq!(rows[0].details["character_name"], "Ghost Alt");
 }
 
 // ---------------------------------------------------------------------------

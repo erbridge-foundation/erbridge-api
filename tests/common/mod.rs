@@ -28,6 +28,11 @@ pub fn test_jwt_key() -> [u8; 32] {
 
 /// Spins up a temporary PostgreSQL instance, applies migrations, and returns
 /// the embed handle and pool. Keep `PgEmbed` alive for the test duration.
+///
+/// Each call creates a fully isolated DB on a random port — tests that use
+/// this helper do not share state and can run in parallel safely. Tests that
+/// manually `DELETE FROM` a table are relying on this isolation; switching to
+/// a shared DB would break them.
 pub async fn setup_db() -> (PgEmbed, sqlx::PgPool) {
     let port = portpicker::pick_unused_port().expect("no free port");
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -12,11 +12,11 @@ pub enum AuditEvent {
     CharacterAdded { account_id: Uuid, eve_character_id: i64, character_name: String },
     CharacterRemoved { account_id: Uuid, eve_character_id: i64 },
     CharacterSetMain { account_id: Uuid, eve_character_id: i64 },
-    GhostCharacterClaimed { account_id: Uuid, eve_character_id: i64 },
+    GhostCharacterClaimed { account_id: Uuid, eve_character_id: i64, character_name: String },
 }
 
 impl AuditEvent {
-    fn event_type(&self) -> &'static str {
+    pub fn event_type(&self) -> &'static str {
         match self {
             Self::AccountRegistered { .. } => "account_registered",
             Self::AccountDeletionRequested { .. } => "account_deletion_requested",
@@ -29,32 +29,36 @@ impl AuditEvent {
         }
     }
 
-    fn details(&self) -> Value {
+    pub fn details(&self) -> Value {
         match self {
+            // actor is NULL for registration — account_id not in actor column so include it here.
             Self::AccountRegistered { account_id, eve_character_id, character_name } => json!({
                 "account_id": account_id,
                 "eve_character_id": eve_character_id,
                 "character_name": character_name,
             }),
-            Self::AccountDeletionRequested { account_id } => json!({ "account_id": account_id }),
-            Self::AccountReactivated { account_id } => json!({ "account_id": account_id }),
+            // actor carries the account — no need to repeat it.
+            Self::AccountDeletionRequested { .. } => json!({}),
+            // actor is NULL for purge — include account_id so it's not lost.
             Self::AccountPurged { account_id } => json!({ "account_id": account_id }),
-            Self::CharacterAdded { account_id, eve_character_id, character_name } => json!({
-                "account_id": account_id,
+            // actor == account_id (self-reactivation) — include for clarity since actor is self.
+            Self::AccountReactivated { account_id } => json!({ "account_id": account_id }),
+            Self::CharacterAdded { eve_character_id, character_name, .. } => json!({
                 "eve_character_id": eve_character_id,
                 "character_name": character_name,
             }),
-            Self::CharacterRemoved { account_id, eve_character_id } => json!({
-                "account_id": account_id,
+            Self::CharacterRemoved { eve_character_id, .. } => json!({
                 "eve_character_id": eve_character_id,
             }),
-            Self::CharacterSetMain { account_id, eve_character_id } => json!({
-                "account_id": account_id,
+            Self::CharacterSetMain { eve_character_id, .. } => json!({
                 "eve_character_id": eve_character_id,
             }),
-            Self::GhostCharacterClaimed { account_id, eve_character_id } => json!({
+            // actor is NULL for login ghost-claim (no session yet) — include account_id.
+            // actor is set for attach ghost-claim — but include for consistency.
+            Self::GhostCharacterClaimed { account_id, eve_character_id, character_name } => json!({
                 "account_id": account_id,
                 "eve_character_id": eve_character_id,
+                "character_name": character_name,
             }),
         }
     }
@@ -85,12 +89,6 @@ pub async fn record_in_tx(
     Ok(())
 }
 
-/// Writes a single audit event, opening its own transaction.
-pub async fn record(pool: &PgPool, actor: Option<Uuid>, event: AuditEvent) -> Result<()> {
-    let mut tx = pool.begin().await?;
-    record_in_tx(&mut tx, actor, event).await?;
-    tx.commit().await.context("failed to commit audit log entry")
-}
 
 #[cfg(test)]
 mod tests {
@@ -121,7 +119,8 @@ mod tests {
         let id = test_uuid();
         let event = AuditEvent::AccountDeletionRequested { account_id: id };
         assert_eq!(event.event_type(), "account_deletion_requested");
-        assert_eq!(event.details()["account_id"], id.to_string());
+        // account_id is carried by actor_account_id column, not repeated in details.
+        assert!(event.details().as_object().unwrap().is_empty());
     }
 
     #[test]
@@ -148,11 +147,8 @@ mod tests {
             eve_character_id: 123456789,
             character_name: "Test Character".into(),
         };
-        assert_eq!(event.event_type(), "character_added");
-        let d = event.details();
-        assert_eq!(d["account_id"], id.to_string());
-        assert_eq!(d["eve_character_id"], 123456789i64);
-        assert_eq!(d["character_name"], "Test Character");
+        assert!(event.details().get("account_id").is_none());
+        assert_eq!(event.details()["eve_character_id"], 123456789i64);
     }
 
     #[test]
@@ -160,9 +156,8 @@ mod tests {
         let id = test_uuid();
         let event = AuditEvent::CharacterRemoved { account_id: id, eve_character_id: 42 };
         assert_eq!(event.event_type(), "character_removed");
-        let d = event.details();
-        assert_eq!(d["account_id"], id.to_string());
-        assert_eq!(d["eve_character_id"], 42i64);
+        assert_eq!(event.details()["eve_character_id"], 42i64);
+        assert!(event.details().get("account_id").is_none());
     }
 
     #[test]
@@ -170,18 +165,22 @@ mod tests {
         let id = test_uuid();
         let event = AuditEvent::CharacterSetMain { account_id: id, eve_character_id: 99 };
         assert_eq!(event.event_type(), "character_set_main");
-        let d = event.details();
-        assert_eq!(d["account_id"], id.to_string());
-        assert_eq!(d["eve_character_id"], 99i64);
+        assert_eq!(event.details()["eve_character_id"], 99i64);
+        assert!(event.details().get("account_id").is_none());
     }
 
     #[test]
     fn ghost_character_claimed_serialises_correctly() {
         let id = test_uuid();
-        let event = AuditEvent::GhostCharacterClaimed { account_id: id, eve_character_id: 7 };
+        let event = AuditEvent::GhostCharacterClaimed {
+            account_id: id,
+            eve_character_id: 7,
+            character_name: "Ghost Pilot".into(),
+        };
         assert_eq!(event.event_type(), "ghost_character_claimed");
         let d = event.details();
         assert_eq!(d["account_id"], id.to_string());
         assert_eq!(d["eve_character_id"], 7i64);
+        assert_eq!(d["character_name"], "Ghost Pilot");
     }
 }
