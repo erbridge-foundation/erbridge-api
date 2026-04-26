@@ -220,6 +220,8 @@ async fn poll_one_online(
         state.config.esi_base, character.eve_character_id
     );
 
+    debug!(eve_character_id = character.eve_character_id, "online poller: polling");
+
     let response = match esi::esi_request(|| async {
         state
             .http
@@ -259,6 +261,13 @@ async fn poll_one_online(
             return cache_secs;
         }
     };
+
+    debug!(
+        eve_character_id = character.eve_character_id,
+        is_online = body.online,
+        cache_secs = ?cache_secs,
+        "online poller: got result"
+    );
 
     // Only write to the DB if the status changed.
     if character.is_online != Some(body.online) {

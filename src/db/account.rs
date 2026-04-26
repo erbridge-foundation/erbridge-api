@@ -4,6 +4,8 @@ use sqlx::{Postgres, Transaction};
 use strum::{Display, EnumString};
 use uuid::Uuid;
 
+use crate::audit::{self, AuditEvent};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum AccountStatus {
@@ -45,7 +47,7 @@ impl TryFrom<AccountRow> for Account {
 }
 
 pub async fn insert_account(tx: &mut Transaction<'_, Postgres>) -> Result<Account> {
-    sqlx::query_as!(
+    let account: Account = sqlx::query_as!(
         AccountRow,
         r#"
         INSERT INTO account DEFAULT VALUES
@@ -55,12 +57,18 @@ pub async fn insert_account(tx: &mut Transaction<'_, Postgres>) -> Result<Accoun
     .fetch_one(&mut **tx)
     .await
     .context("failed to insert account")?
-    .try_into()
+    .try_into()?;
+
+    audit::record_in_tx(tx, None, AuditEvent::AccountRegistered { account_id: account.id })
+        .await?;
+
+    Ok(account)
 }
 
 /// Reactivates an account that is in `pending_delete` status.
 /// Returns `false` if the account was not found or was not pending deletion.
-pub async fn reactivate_account(pool: &sqlx::PgPool, id: Uuid) -> Result<bool> {
+/// `actor` should be the account's own id (self-reactivation via login).
+pub async fn reactivate_account(pool: &sqlx::PgPool, id: Uuid, actor: Option<Uuid>) -> Result<bool> {
     let result = sqlx::query!(
         r#"
         UPDATE account
@@ -76,25 +84,36 @@ pub async fn reactivate_account(pool: &sqlx::PgPool, id: Uuid) -> Result<bool> {
     .await
     .context("failed to reactivate account")?;
 
-    Ok(result.rows_affected() > 0)
+    if result.rows_affected() > 0 {
+        audit::record(pool, actor, AuditEvent::AccountReactivated { account_id: id }).await?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 /// Hard-deletes all accounts in `pending_delete` status whose grace period has expired.
 /// Returns the number of accounts deleted.
 pub async fn purge_expired_accounts(pool: &sqlx::PgPool, grace_days: u32) -> Result<u64> {
-    let result = sqlx::query!(
+    let deleted_ids = sqlx::query_scalar!(
         r#"
         DELETE FROM account
         WHERE status = 'pending_delete'
           AND delete_requested_at < now() - ($1 * interval '1 day')
+        RETURNING id
         "#,
         grace_days as i32,
     )
-    .execute(pool)
+    .fetch_all(pool)
     .await
     .context("failed to purge expired pending-delete accounts")?;
 
-    Ok(result.rows_affected())
+    let count = deleted_ids.len() as u64;
+    for account_id in deleted_ids {
+        audit::record(pool, None, AuditEvent::AccountPurged { account_id }).await?;
+    }
+
+    Ok(count)
 }
 
 /// Returns the status for the given account, or `None` if not found.
@@ -112,7 +131,11 @@ pub async fn get_account_status(pool: &sqlx::PgPool, id: Uuid) -> Result<Option<
 
 /// Marks the account as `pending_delete` and records the request timestamp.
 /// Returns `false` if the account was not found or already pending deletion.
-pub async fn request_account_deletion(pool: &sqlx::PgPool, id: Uuid) -> Result<bool> {
+pub async fn request_account_deletion(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+    actor: Option<Uuid>,
+) -> Result<bool> {
     let result = sqlx::query!(
         r#"
         UPDATE account
@@ -128,5 +151,10 @@ pub async fn request_account_deletion(pool: &sqlx::PgPool, id: Uuid) -> Result<b
     .await
     .context("failed to request account deletion")?;
 
-    Ok(result.rows_affected() > 0)
+    if result.rows_affected() > 0 {
+        audit::record(pool, actor, AuditEvent::AccountDeletionRequested { account_id: id }).await?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }

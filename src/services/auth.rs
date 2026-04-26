@@ -4,6 +4,7 @@ use sqlx::PgPool;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::audit::{self, AuditEvent};
 use crate::db::{account, character};
 
 pub struct AttachCharacterInput<'a> {
@@ -52,6 +53,15 @@ pub async fn attach_character_to_account(
                     input.esi_token_expires_at,
                 )
                 .await?;
+                audit::record_in_tx(
+                    &mut tx,
+                    Some(input.account_id),
+                    AuditEvent::GhostCharacterClaimed {
+                        account_id: input.account_id,
+                        eve_character_id: input.eve_character_id,
+                    },
+                )
+                .await?;
                 tx.commit().await?;
                 info!(
                     eve_character_id = input.eve_character_id,
@@ -64,7 +74,7 @@ pub async fn attach_character_to_account(
                     existing_account_id == input.account_id,
                     "character is already linked to a different account"
                 );
-                // Already on this account — refresh tokens.
+                // Already on this account — refresh tokens; no audit event needed.
                 character::update_character_tokens(
                     pool,
                     aes_key,
@@ -103,6 +113,16 @@ pub async fn attach_character_to_account(
             access_token: input.access_token,
             refresh_token: input.refresh_token,
             esi_token_expires_at: input.esi_token_expires_at,
+        },
+    )
+    .await?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(input.account_id),
+        AuditEvent::CharacterAdded {
+            account_id: input.account_id,
+            eve_character_id: input.eve_character_id,
+            character_name: input.name.to_string(),
         },
     )
     .await?;
@@ -160,6 +180,15 @@ pub async fn login_or_register(
                     input.esi_token_expires_at,
                 )
                 .await?;
+                audit::record_in_tx(
+                    &mut tx,
+                    None,
+                    AuditEvent::GhostCharacterClaimed {
+                        account_id: acc.id,
+                        eve_character_id: input.eve_character_id,
+                    },
+                )
+                .await?;
                 tx.commit().await?;
                 info!(
                     eve_character_id = input.eve_character_id,
@@ -169,8 +198,9 @@ pub async fn login_or_register(
                 return Ok(acc.id);
             }
             Some(account_id) => {
-                // Reactivate the account if it was pending deletion.
-                let reactivated = account::reactivate_account(pool, account_id).await?;
+                // Reactivate the account if it was pending deletion (self-actor).
+                let reactivated =
+                    account::reactivate_account(pool, account_id, Some(account_id)).await?;
                 if reactivated {
                     info!(
                         eve_character_id = input.eve_character_id,

@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod config;
 pub mod crypto;
 pub mod db;
@@ -24,9 +25,7 @@ use sqlx::PgPool;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
 use crate::{
-    config::Config,
-    esi::discovery::EsiMetadata,
-    state::AppState,
+    config::Config, esi::discovery::EsiMetadata, state::AppState,
     tasks::character_location_poll::LocationEvent,
 };
 
@@ -65,6 +64,11 @@ pub fn router(
     Router::new()
         // Health
         .route("/api/health", get(handlers::health::health))
+        // Debug (temporary)
+        .route(
+            "/debug/location-subscribe/{character_id}",
+            get(handlers::debug::location_subscribe),
+        )
         // EVE SSO auth flow
         .route("/auth/login", get(handlers::auth::login))
         .route("/auth/callback", get(handlers::auth::callback))

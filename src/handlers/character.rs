@@ -129,7 +129,7 @@ pub async fn delete_account(
     AccountId(account_id): AccountId,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let updated = request_account_deletion(&state.db, account_id)
+    let updated = request_account_deletion(&state.db, account_id, Some(account_id))
         .await
         .map_err(|e| {
             warn!(error = %e, %account_id, "failed to request account deletion");

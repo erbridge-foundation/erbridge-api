@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM account\n        WHERE status = 'pending_delete'\n          AND delete_requested_at < now() - ($1 * interval '1 day')\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Float8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3a58d3dcb2ca0eeaf4e685543a0843b8055e35cbd84c08a0b64236f1f0e85a00"
+}

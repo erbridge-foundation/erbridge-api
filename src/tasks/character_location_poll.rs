@@ -204,6 +204,8 @@ async fn poll_one_location(state: &AppState, character: &Character) -> Option<u6
         state.config.esi_base, character.eve_character_id
     );
 
+    debug!(eve_character_id = character.eve_character_id, "location poller: polling");
+
     let response = match esi::esi_request(|| async {
         state
             .http
@@ -243,6 +245,15 @@ async fn poll_one_location(state: &AppState, character: &Character) -> Option<u6
             return cache_secs;
         }
     };
+
+    debug!(
+        eve_character_id = character.eve_character_id,
+        solar_system_id = body.solar_system_id,
+        station_id = ?body.station_id,
+        structure_id = ?body.structure_id,
+        cache_secs = ?cache_secs,
+        "location poller: got result"
+    );
 
     let event = LocationEvent {
         eve_character_id: character.eve_character_id,

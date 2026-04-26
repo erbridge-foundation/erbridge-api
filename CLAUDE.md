@@ -31,5 +31,6 @@ It contains reference/scratch material that is not part of the active codebase.
 
 ## Testing
 
-Dev dependencies are set up for integration tests: `axum-test`, `pg-embed`, `wiremock`, `portpicker`, `cookie`.
-Unit tests live in `#[cfg(test)]` modules within `src/`. No integration tests exist yet.
+- Dev dependencies are set up for integration tests: `axum-test`, `pg-embed`, `wiremock`, `portpicker`, `cookie`.
+- Unit tests live in `#[cfg(test)]` modules within `src/`. No integration tests exist yet.
+- Always generate unit and/or integration tests
