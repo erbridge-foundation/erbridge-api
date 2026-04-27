@@ -75,10 +75,7 @@ pub async fn run_sde_update_check_inner(
         .await
         .context("current_sde_metadata")?;
 
-    if meta
-        .as_ref()
-        .map_or(false, |m| m.sde_version == version_str)
-    {
+    if meta.as_ref().is_some_and(|m| m.sde_version == version_str) {
         info!(build_number, "SDE is already current, no update needed");
         return Ok(());
     }

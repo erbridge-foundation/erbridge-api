@@ -12,10 +12,7 @@ pub async fn health(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Hea
         Err(_) => ComponentState::Degraded,
     };
 
-    let overall = match db_state {
-        ComponentState::Ok => ComponentState::Ok,
-        ComponentState::Degraded => ComponentState::Degraded,
-    };
+    let overall = db_state;
 
     let http_status = match overall {
         ComponentState::Ok => StatusCode::OK,

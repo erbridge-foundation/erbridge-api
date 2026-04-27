@@ -46,14 +46,9 @@ async fn run_online_poller(state: Arc<AppState>, mut rx: mpsc::Receiver<Vec<i64>
 
     loop {
         // Drain any incoming character registrations without blocking.
-        loop {
-            match rx.try_recv() {
-                Ok(ids) => {
-                    for id in ids {
-                        next_poll_at.entry(id).or_insert_with(Instant::now);
-                    }
-                }
-                Err(_) => break,
+        while let Ok(ids) = rx.try_recv() {
+            for id in ids {
+                next_poll_at.entry(id).or_insert_with(Instant::now);
             }
         }
 

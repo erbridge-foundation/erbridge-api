@@ -63,7 +63,7 @@ impl Config {
         let esi_callback_url = std::env::var("ESI_CALLBACK_URL")
             .unwrap_or_else(|_| format!("{}/auth/callback", app_url));
 
-        let frontend_url = std::env::var("FRONTEND_URL").unwrap_or_else(|_| app_url);
+        let frontend_url = std::env::var("FRONTEND_URL").unwrap_or(app_url);
 
         let account_deletion_grace_days = std::env::var("ACCOUNT_DELETION_GRACE_DAYS")
             .ok()

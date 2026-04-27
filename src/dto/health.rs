@@ -12,7 +12,7 @@ pub struct Components {
     pub database: ComponentState,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum ComponentState {
     Ok,

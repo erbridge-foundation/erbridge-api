@@ -144,6 +144,7 @@ pub async fn insert_character(
 
 /// Claims a ghost character row: sets account_id, is_main, and ESI tokens in
 /// one update. Must run inside a transaction.
+#[allow(clippy::too_many_arguments)]
 pub async fn claim_ghost_character(
     tx: &mut Transaction<'_, Postgres>,
     aes_key: &[u8; 32],
@@ -205,6 +206,7 @@ pub async fn claim_ghost_character(
 }
 
 /// Updates ESI tokens on an existing claimed character row.
+#[allow(clippy::too_many_arguments)]
 pub async fn update_character_tokens(
     pool: &PgPool,
     aes_key: &[u8; 32],

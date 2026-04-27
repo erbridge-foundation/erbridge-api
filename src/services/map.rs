@@ -43,12 +43,11 @@ pub enum MapError {
 
 impl From<sqlx::Error> for MapError {
     fn from(e: sqlx::Error) -> Self {
-        if let sqlx::Error::Database(ref dbe) = e {
-            if let Some(constraint) = dbe.constraint() {
-                if constraint.contains("system_id") || constraint.contains("sde_solar_system") {
-                    return MapError::SystemNotFound;
-                }
-            }
+        if let sqlx::Error::Database(ref dbe) = e
+            && let Some(constraint) = dbe.constraint()
+            && (constraint.contains("system_id") || constraint.contains("sde_solar_system"))
+        {
+            return MapError::SystemNotFound;
         }
         MapError::Internal(anyhow::Error::from(e))
     }
@@ -120,7 +119,7 @@ pub async fn list_maps(pool: &PgPool, account_id: Uuid) -> Result<Vec<MapWithAcl
         .map(|m| {
             let acls = manageable_acls
                 .iter()
-                .filter(|a| attached.get(&m.id).map_or(false, |ids| ids.contains(&a.id)))
+                .filter(|a| attached.get(&m.id).is_some_and(|ids| ids.contains(&a.id)))
                 .map(|a| (a.id, a.name.clone()))
                 .collect();
             MapWithAcls {
@@ -375,16 +374,11 @@ pub async fn create_connection(
         db_conn::insert_connection(&mut tx, input.map_id, input.system_a_id, input.system_b_id)
             .await
             .map_err(|e| {
-                if let Some(dbe) = e.downcast_ref::<sqlx::Error>() {
-                    if let sqlx::Error::Database(db_err) = dbe {
-                        if let Some(constraint) = db_err.constraint() {
-                            if constraint.contains("system_id")
-                                || constraint.contains("sde_solar_system")
-                            {
-                                return MapError::SystemNotFound;
-                            }
-                        }
-                    }
+                if let Some(sqlx::Error::Database(db_err)) = e.downcast_ref::<sqlx::Error>()
+                    && let Some(constraint) = db_err.constraint()
+                    && (constraint.contains("system_id") || constraint.contains("sde_solar_system"))
+                {
+                    return MapError::SystemNotFound;
                 }
                 MapError::Internal(e)
             })?;
@@ -429,14 +423,11 @@ pub async fn add_signature(
     )
     .await
     .map_err(|e| {
-        if let Some(dbe) = e.downcast_ref::<sqlx::Error>() {
-            if let sqlx::Error::Database(db_err) = dbe {
-                if let Some(constraint) = db_err.constraint() {
-                    if constraint.contains("system_id") || constraint.contains("sde_solar_system") {
-                        return MapError::SystemNotFound;
-                    }
-                }
-            }
+        if let Some(sqlx::Error::Database(db_err)) = e.downcast_ref::<sqlx::Error>()
+            && let Some(constraint) = db_err.constraint()
+            && (constraint.contains("system_id") || constraint.contains("sde_solar_system"))
+        {
+            return MapError::SystemNotFound;
         }
         MapError::Internal(e)
     })?;

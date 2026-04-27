@@ -133,6 +133,7 @@ pub async fn delete_acl(
 /// - `permission` is invalid
 /// - `manage`/`admin` is used on a non-character member
 /// - the entity is already a member of this ACL
+#[allow(clippy::too_many_arguments)]
 pub async fn add_member(
     pool: &PgPool,
     http: &Client,
@@ -280,6 +281,10 @@ async fn require_acl(pool: &PgPool, acl_id: Uuid) -> Result<Acl, AclError> {
 /// Resolves the requesting account's effective permission on the ACL.
 /// Owners always have admin. Character members with manage/admin qualify.
 /// Returns `Err` if the required level is not met.
+///
+/// Only direct character membership is checked — corporation/alliance entries
+/// cannot grant ACL management rights by design (manage/admin are
+/// character-only permissions).
 async fn require_acl_permission(
     acl: &Acl,
     account_id: Uuid,
