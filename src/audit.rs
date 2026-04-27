@@ -91,21 +91,6 @@ pub enum AuditEvent {
         map_id: Uuid,
         acl_id: Uuid,
     },
-    /// Summary audit entry for per-map data mutations (connections, signatures).
-    ///
-    /// Design decision: fine-grained mutation events (ConnectionCreated,
-    /// SignatureAdded, etc.) already flow into `map_events` which is the
-    /// authoritative replay log for map state. `audit_log` tracks "what did
-    /// account X do to admin objects"; map data mutations are not admin actions
-    /// but they are account-attributable, so we record a lightweight summary
-    /// here. If `map_events` is ever split into a separate data store, add
-    /// full variants here.
-    MapDataMutated {
-        account_id: Uuid,
-        map_id: Uuid,
-        /// Matches the `event_type` string appended to `map_events`.
-        kind: &'static str,
-    },
 }
 
 impl AuditEvent {
@@ -129,7 +114,6 @@ impl AuditEvent {
             Self::AclMemberRemoved { .. } => "acl_member_removed",
             Self::AclAttachedToMap { .. } => "acl_attached_to_map",
             Self::AclDetachedFromMap { .. } => "acl_detached_from_map",
-            Self::MapDataMutated { .. } => "map_data_mutated",
         }
     }
 
@@ -243,10 +227,6 @@ impl AuditEvent {
             Self::AclDetachedFromMap { map_id, acl_id, .. } => json!({
                 "map_id": map_id,
                 "acl_id": acl_id,
-            }),
-            Self::MapDataMutated { map_id, kind, .. } => json!({
-                "map_id": map_id,
-                "kind": kind,
             }),
         }
     }

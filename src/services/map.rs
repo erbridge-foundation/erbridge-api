@@ -422,18 +422,6 @@ pub async fn create_connection(
     .await
     .context("failed to append ConnectionCreated event")?;
 
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapDataMutated {
-            account_id,
-            map_id: input.map_id,
-            kind: "ConnectionCreated",
-        },
-    )
-    .await
-    .context("failed to record map_data_mutated audit event")?;
-
     tx.commit()
         .await
         .context("failed to commit create_connection")?;
@@ -483,18 +471,6 @@ pub async fn add_signature(
     )
     .await
     .context("failed to append SignatureAdded event")?;
-
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapDataMutated {
-            account_id,
-            map_id: input.map_id,
-            kind: "SignatureAdded",
-        },
-    )
-    .await
-    .context("failed to record map_data_mutated audit event")?;
 
     tx.commit()
         .await
@@ -556,18 +532,6 @@ pub async fn link_signature(
     .await
     .context("failed to append SignatureLinkedToConnectionEnd event")?;
 
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapDataMutated {
-            account_id,
-            map_id,
-            kind: "SignatureLinkedToConnectionEnd",
-        },
-    )
-    .await
-    .context("failed to record map_data_mutated audit event")?;
-
     tx.commit()
         .await
         .context("failed to commit link_signature")?;
@@ -622,18 +586,6 @@ pub async fn update_connection_metadata(
     .await
     .context("failed to append ConnectionMetadataUpdated event")?;
 
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapDataMutated {
-            account_id,
-            map_id,
-            kind: "ConnectionMetadataUpdated",
-        },
-    )
-    .await
-    .context("failed to record map_data_mutated audit event")?;
-
     tx.commit()
         .await
         .context("failed to commit update_connection_metadata")?;
@@ -681,18 +633,6 @@ pub async fn delete_connection(
     .await
     .context("failed to append ConnectionDeleted event")?;
 
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapDataMutated {
-            account_id,
-            map_id,
-            kind: "ConnectionDeleted",
-        },
-    )
-    .await
-    .context("failed to record map_data_mutated audit event")?;
-
     tx.commit()
         .await
         .context("failed to commit delete_connection")?;
@@ -739,18 +679,6 @@ pub async fn delete_signature(
     )
     .await
     .context("failed to append SignatureDeleted event")?;
-
-    audit::record_in_tx(
-        &mut tx,
-        Some(account_id),
-        AuditEvent::MapDataMutated {
-            account_id,
-            map_id,
-            kind: "SignatureDeleted",
-        },
-    )
-    .await
-    .context("failed to record map_data_mutated audit event")?;
 
     tx.commit()
         .await
