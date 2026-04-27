@@ -41,6 +41,9 @@ pub struct Config {
     /// How often (in minutes) the map checkpoint task snapshots map state.
     /// (MAP_CHECKPOINT_INTERVAL_MINS, default 60)
     pub map_checkpoint_interval_mins: u64,
+    /// Maximum number of connections in the PostgreSQL connection pool.
+    /// Validated to 1..=200. (DATABASE_MAX_CONNECTIONS, default 20)
+    pub database_max_connections: u32,
 }
 
 impl Config {
@@ -110,6 +113,20 @@ impl Config {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(60);
 
+        let database_max_connections = {
+            let raw = std::env::var("DATABASE_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(20);
+            if !(1..=200).contains(&raw) {
+                anyhow::bail!(
+                    "DATABASE_MAX_CONNECTIONS must be between 1 and 200 (got {})",
+                    raw
+                );
+            }
+            raw
+        };
+
         Ok(Self {
             esi_clients,
             esi_callback_url,
@@ -123,6 +140,7 @@ impl Config {
             esi_poll_batch_size,
             esi_poll_batch_delay_ms,
             map_checkpoint_interval_mins,
+            database_max_connections,
         })
     }
 }
@@ -216,6 +234,100 @@ mod tests {
         unsafe {
             std::env::remove_var("ESI_CLIENT_ID");
             std::env::remove_var("ESI_CLIENT_SECRET");
+        }
+    }
+
+    fn set_required_env_vars() {
+        unsafe {
+            std::env::set_var("ENCRYPTION_SECRET", "a-sufficiently-long-test-secret-value");
+            std::env::set_var("APP_URL", "http://localhost:8080");
+            std::env::remove_var("ESI_CLIENT_ID_1");
+            std::env::set_var("ESI_CLIENT_ID", "cid");
+            std::env::set_var("ESI_CLIENT_SECRET", "csecret");
+        }
+    }
+
+    fn clear_required_env_vars() {
+        unsafe {
+            std::env::remove_var("ENCRYPTION_SECRET");
+            std::env::remove_var("APP_URL");
+            std::env::remove_var("ESI_CLIENT_ID");
+            std::env::remove_var("ESI_CLIENT_SECRET");
+        }
+    }
+
+    #[test]
+    fn database_max_connections_default_is_20() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe {
+            std::env::remove_var("DATABASE_MAX_CONNECTIONS");
+        }
+
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.database_max_connections, 20);
+
+        clear_required_env_vars();
+    }
+
+    #[test]
+    fn database_max_connections_accepts_valid_value() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe {
+            std::env::set_var("DATABASE_MAX_CONNECTIONS", "50");
+        }
+
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.database_max_connections, 50);
+
+        clear_required_env_vars();
+        unsafe {
+            std::env::remove_var("DATABASE_MAX_CONNECTIONS");
+        }
+    }
+
+    #[test]
+    fn database_max_connections_rejects_zero() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe {
+            std::env::set_var("DATABASE_MAX_CONNECTIONS", "0");
+        }
+
+        match Config::from_env() {
+            Err(e) => assert!(
+                e.to_string().contains("DATABASE_MAX_CONNECTIONS"),
+                "error message should mention DATABASE_MAX_CONNECTIONS, got: {e}"
+            ),
+            Ok(_) => panic!("expected error for DATABASE_MAX_CONNECTIONS=0"),
+        }
+
+        clear_required_env_vars();
+        unsafe {
+            std::env::remove_var("DATABASE_MAX_CONNECTIONS");
+        }
+    }
+
+    #[test]
+    fn database_max_connections_rejects_over_200() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe {
+            std::env::set_var("DATABASE_MAX_CONNECTIONS", "201");
+        }
+
+        match Config::from_env() {
+            Err(e) => assert!(
+                e.to_string().contains("DATABASE_MAX_CONNECTIONS"),
+                "error message should mention DATABASE_MAX_CONNECTIONS, got: {e}"
+            ),
+            Ok(_) => panic!("expected error for DATABASE_MAX_CONNECTIONS=201"),
+        }
+
+        clear_required_env_vars();
+        unsafe {
+            std::env::remove_var("DATABASE_MAX_CONNECTIONS");
         }
     }
 }

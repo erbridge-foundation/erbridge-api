@@ -7,6 +7,7 @@ use std::{
 use reqwest::header::CACHE_CONTROL;
 use serde::Deserialize;
 use tokio::{sync::mpsc, time::sleep};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -32,19 +33,31 @@ struct OnlineResponse {
 /// Returns the sender half of the channel. The login/add-character handler
 /// should send the account's eve_character_ids down this channel so they are
 /// registered for polling immediately.
-pub fn spawn_online_poller(state: Arc<AppState>) -> mpsc::Sender<Vec<i64>> {
+pub fn spawn_online_poller(
+    state: Arc<AppState>,
+    cancel: CancellationToken,
+) -> mpsc::Sender<Vec<i64>> {
     let (tx, rx) = mpsc::channel::<Vec<i64>>(256);
-    tokio::spawn(run_online_poller(state, rx));
+    tokio::spawn(run_online_poller(state, rx, cancel));
     tx
 }
 
-async fn run_online_poller(state: Arc<AppState>, mut rx: mpsc::Receiver<Vec<i64>>) {
+async fn run_online_poller(
+    state: Arc<AppState>,
+    mut rx: mpsc::Receiver<Vec<i64>>,
+    cancel: CancellationToken,
+) {
     // next_poll_at tracks when each character is next due. Characters are
     // added here when the login handler sends their IDs, and refreshed every
     // cycle from the DB so newly-added characters are picked up automatically.
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
 
     loop {
+        if cancel.is_cancelled() {
+            info!("online poller: shutting down");
+            return;
+        }
+
         // Drain any incoming character registrations without blocking.
         while let Ok(ids) = rx.try_recv() {
             for id in ids {
@@ -59,7 +72,13 @@ async fn run_online_poller(state: Arc<AppState>, mut rx: mpsc::Receiver<Vec<i64>
             Ok(c) => c,
             Err(e) => {
                 error!(error = %e, "online poller: failed to fetch characters");
-                sleep(Duration::from_secs(DEFAULT_CACHE_SECS)).await;
+                tokio::select! {
+                    _ = sleep(Duration::from_secs(DEFAULT_CACHE_SECS)) => {}
+                    _ = cancel.cancelled() => {
+                        info!("online poller: shutting down");
+                        return;
+                    }
+                }
                 continue;
             }
         };
@@ -161,7 +180,13 @@ async fn run_online_poller(state: Arc<AppState>, mut rx: mpsc::Receiver<Vec<i64>
             .unwrap_or_else(|| Instant::now() + Duration::from_secs(DEFAULT_CACHE_SECS));
         let now = Instant::now();
         if sleep_until > now {
-            sleep(sleep_until - now).await;
+            tokio::select! {
+                _ = sleep(sleep_until - now) => {}
+                _ = cancel.cancelled() => {
+                    info!("online poller: shutting down");
+                    return;
+                }
+            }
         }
     }
 }
@@ -273,4 +298,72 @@ async fn poll_one_online(state: &AppState, character: &Character, _client_id: &s
     }
 
     cache_secs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::{Config, EsiClient},
+        esi::discovery::EsiMetadata,
+        state::AppState,
+        tasks::character_location_poll::LocationEvent,
+    };
+    use dashmap::DashMap;
+    use jsonwebtoken::jwk::JwkSet;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    fn make_state() -> Arc<AppState> {
+        let config = Config {
+            esi_clients: vec![EsiClient {
+                client_id: "test".into(),
+                client_secret: "test".into(),
+            }],
+            esi_callback_url: "http://localhost/callback".into(),
+            aes_key: [0u8; 32],
+            jwt_key: [0u8; 32],
+            frontend_url: "http://localhost".into(),
+            account_deletion_grace_days: 30,
+            esi_base: "http://localhost".into(),
+            esi_refresh_token_max_days: 7,
+            esi_poll_concurrency: 10,
+            esi_poll_batch_size: 10,
+            esi_poll_batch_delay_ms: 500,
+            map_checkpoint_interval_mins: 60,
+            database_max_connections: 5,
+        };
+        Arc::new(AppState {
+            db: sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap(),
+            http: reqwest::Client::new(),
+            config,
+            esi_metadata: EsiMetadata {
+                authorization_endpoint: "http://localhost".into(),
+                token_endpoint: "http://localhost".into(),
+                jwks_uri: "http://localhost".into(),
+            },
+            jwks: Arc::new(RwLock::new(JwkSet { keys: vec![] })),
+            online_poll_tx: None,
+            location_subs: Arc::new(
+                DashMap::<i64, tokio::sync::broadcast::Sender<LocationEvent>>::new(),
+            ),
+        })
+    }
+
+    #[tokio::test]
+    async fn online_poller_exits_on_cancel() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<i64>>(1);
+        drop(tx);
+
+        let state = make_state();
+        let handle = tokio::spawn(run_online_poller(state, rx, cancel));
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+            .await
+            .expect("online poller did not exit within 1s")
+            .expect("task panicked");
+    }
 }

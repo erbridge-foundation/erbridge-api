@@ -7,6 +7,7 @@ use anyhow::{Context, Result, anyhow};
 use reqwest::Client;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::db::sde_solar_system::{self, SdeSolarSystem, SdeSolarSystemMetadata};
@@ -35,16 +36,28 @@ pub async fn load_sde_if_needed(pool: &PgPool, http: &Client) -> Result<()> {
 
 /// Spawns a daily background task that polls for a new SDE build number and
 /// applies updates when the version differs from what is recorded in the DB.
-pub fn spawn_sde_update_check(pool: PgPool, http: Client) {
+pub fn spawn_sde_update_check(pool: PgPool, http: Client, cancel: CancellationToken) {
     tokio::spawn(async move {
         // Offset so it doesn't fire immediately at startup.
-        tokio::time::sleep(Duration::from_secs(10 * 60)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(10 * 60)) => {}
+            _ = cancel.cancelled() => {
+                info!("SDE update check: shutting down");
+                return;
+            }
+        }
 
         let mut interval = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
         interval.tick().await;
 
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {}
+                _ = cancel.cancelled() => {
+                    info!("SDE update check: shutting down");
+                    return;
+                }
+            }
 
             if let Err(e) = run_sde_update_check(&pool, &http).await {
                 warn!(error = %e, "SDE update check failed");

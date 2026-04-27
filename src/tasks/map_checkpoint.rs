@@ -3,23 +3,30 @@ use std::time::Duration;
 
 use serde_json::json;
 use tokio::time;
-use tracing::error;
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info};
 
 use crate::db::{connection as db_conn, map as db_map, map_checkpoint, signature as db_sig};
 use crate::state::AppState;
 
-pub fn spawn_checkpoint_task(state: Arc<AppState>) {
-    tokio::spawn(run_checkpoint_task(state));
+pub fn spawn_checkpoint_task(state: Arc<AppState>, cancel: CancellationToken) {
+    tokio::spawn(run_checkpoint_task(state, cancel));
 }
 
-async fn run_checkpoint_task(state: Arc<AppState>) {
+async fn run_checkpoint_task(state: Arc<AppState>, cancel: CancellationToken) {
     let interval_secs = state.config.map_checkpoint_interval_mins * 60;
     let mut interval = time::interval(Duration::from_secs(interval_secs));
     // Skip the first immediate tick so startup isn't hammered.
     interval.tick().await;
 
     loop {
-        interval.tick().await;
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = cancel.cancelled() => {
+                info!("map checkpoint: shutting down");
+                return;
+            }
+        }
         if let Err(e) = checkpoint_all_maps(&state).await {
             error!(error = %e, "map checkpoint task failed");
         }
@@ -139,4 +146,69 @@ async fn checkpoint_map(
     tx.commit().await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::{Config, EsiClient},
+        esi::discovery::EsiMetadata,
+        state::AppState,
+        tasks::character_location_poll::LocationEvent,
+    };
+    use dashmap::DashMap;
+    use jsonwebtoken::jwk::JwkSet;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    fn make_state() -> Arc<AppState> {
+        let config = Config {
+            esi_clients: vec![EsiClient {
+                client_id: "test".into(),
+                client_secret: "test".into(),
+            }],
+            esi_callback_url: "http://localhost/callback".into(),
+            aes_key: [0u8; 32],
+            jwt_key: [0u8; 32],
+            frontend_url: "http://localhost".into(),
+            account_deletion_grace_days: 30,
+            esi_base: "http://localhost".into(),
+            esi_refresh_token_max_days: 7,
+            esi_poll_concurrency: 10,
+            esi_poll_batch_size: 10,
+            esi_poll_batch_delay_ms: 500,
+            map_checkpoint_interval_mins: 60,
+            database_max_connections: 5,
+        };
+        Arc::new(AppState {
+            db: sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap(),
+            http: reqwest::Client::new(),
+            config,
+            esi_metadata: EsiMetadata {
+                authorization_endpoint: "http://localhost".into(),
+                token_endpoint: "http://localhost".into(),
+                jwks_uri: "http://localhost".into(),
+            },
+            jwks: Arc::new(RwLock::new(JwkSet { keys: vec![] })),
+            online_poll_tx: None,
+            location_subs: Arc::new(
+                DashMap::<i64, tokio::sync::broadcast::Sender<LocationEvent>>::new(),
+            ),
+        })
+    }
+
+    #[tokio::test]
+    async fn checkpoint_task_exits_on_cancel() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let state = make_state();
+        let handle = tokio::spawn(run_checkpoint_task(state, cancel));
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+            .await
+            .expect("checkpoint task did not exit within 1s")
+            .expect("task panicked");
+    }
 }

@@ -8,7 +8,8 @@ use dashmap::DashMap;
 use reqwest::header::CACHE_CONTROL;
 use serde::Deserialize;
 use tokio::{sync::broadcast, time::sleep};
-use tracing::{debug, error, warn};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info, warn};
 
 use crate::{
     db::character::{Character, find_all_pollable_characters},
@@ -52,20 +53,31 @@ pub fn subscribe(
 }
 
 /// Spawns the location poll background task.
-pub fn spawn_location_poller(state: Arc<AppState>) {
-    tokio::spawn(run_location_poller(state));
+pub fn spawn_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
+    tokio::spawn(run_location_poller(state, cancel));
 }
 
-async fn run_location_poller(state: Arc<AppState>) {
+async fn run_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
 
     loop {
+        if cancel.is_cancelled() {
+            info!("location poller: shutting down");
+            return;
+        }
+
         let characters = match find_all_pollable_characters(&state.db, &state.config.aes_key).await
         {
             Ok(c) => c,
             Err(e) => {
                 error!(error = %e, "location poller: failed to fetch characters");
-                sleep(Duration::from_secs(DEFAULT_CACHE_SECS)).await;
+                tokio::select! {
+                    _ = sleep(Duration::from_secs(DEFAULT_CACHE_SECS)) => {}
+                    _ = cancel.cancelled() => {
+                        info!("location poller: shutting down");
+                        return;
+                    }
+                }
                 continue;
             }
         };
@@ -159,7 +171,13 @@ async fn run_location_poller(state: Arc<AppState>) {
             .unwrap_or_else(|| Instant::now() + Duration::from_secs(DEFAULT_CACHE_SECS));
         let now = Instant::now();
         if sleep_until > now {
-            sleep(sleep_until - now).await;
+            tokio::select! {
+                _ = sleep(sleep_until - now) => {}
+                _ = cancel.cancelled() => {
+                    info!("location poller: shutting down");
+                    return;
+                }
+            }
         }
     }
 }
@@ -301,5 +319,61 @@ mod tests {
         subs.get(&999).unwrap().send(event.clone()).unwrap();
         let received = rx.recv().await.unwrap();
         assert_eq!(received.solar_system_id, 30000142);
+    }
+
+    #[tokio::test]
+    async fn location_poller_exits_on_cancel() {
+        use crate::{
+            config::{Config, EsiClient},
+            esi::discovery::EsiMetadata,
+            state::AppState,
+        };
+        use dashmap::DashMap;
+        use jsonwebtoken::jwk::JwkSet;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let config = Config {
+            esi_clients: vec![EsiClient {
+                client_id: "test".into(),
+                client_secret: "test".into(),
+            }],
+            esi_callback_url: "http://localhost/callback".into(),
+            aes_key: [0u8; 32],
+            jwt_key: [0u8; 32],
+            frontend_url: "http://localhost".into(),
+            account_deletion_grace_days: 30,
+            esi_base: "http://localhost".into(),
+            esi_refresh_token_max_days: 7,
+            esi_poll_concurrency: 10,
+            esi_poll_batch_size: 10,
+            esi_poll_batch_delay_ms: 500,
+            map_checkpoint_interval_mins: 60,
+            database_max_connections: 5,
+        };
+        let state = Arc::new(AppState {
+            db: sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap(),
+            http: reqwest::Client::new(),
+            config,
+            esi_metadata: EsiMetadata {
+                authorization_endpoint: "http://localhost".into(),
+                token_endpoint: "http://localhost".into(),
+                jwks_uri: "http://localhost".into(),
+            },
+            jwks: Arc::new(RwLock::new(JwkSet { keys: vec![] })),
+            online_poll_tx: None,
+            location_subs: Arc::new(DashMap::<i64, broadcast::Sender<LocationEvent>>::new()),
+        });
+
+        let handle = tokio::spawn(run_location_poller(state, cancel));
+
+        // Should exit within 1s since token is pre-cancelled.
+        tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+            .await
+            .expect("location poller did not exit within 1s")
+            .expect("task panicked");
     }
 }
