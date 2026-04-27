@@ -661,3 +661,141 @@ async fn character_with_manage_permission_can_add_members() {
         result.err()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Audit log assertions (A3, A4)
+// ---------------------------------------------------------------------------
+
+async fn audit_event_count(pool: &sqlx::PgPool, event_type: &str) -> i64 {
+    sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM audit_log WHERE event_type = $1",
+        event_type
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn create_acl_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 20000100, "Creator").await;
+
+    let before = audit_event_count(&pool, "acl_created").await;
+    create_acl(&pool, account_id, "Audit ACL").await.unwrap();
+    let after = audit_event_count(&pool, "acl_created").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn rename_acl_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 20000101, "Owner").await;
+    let acl = create_acl(&pool, account_id, "Before").await.unwrap();
+
+    let before = audit_event_count(&pool, "acl_renamed").await;
+    rename_acl(&pool, acl.id, account_id, "After")
+        .await
+        .unwrap();
+    let after = audit_event_count(&pool, "acl_renamed").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn delete_acl_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 20000102, "Owner").await;
+    let acl = create_acl(&pool, account_id, "To Delete").await.unwrap();
+
+    let before = audit_event_count(&pool, "acl_deleted").await;
+    delete_acl(&pool, acl.id, account_id).await.unwrap();
+    let after = audit_event_count(&pool, "acl_deleted").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn add_member_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 20000103, "Owner").await;
+    let acl = create_acl(&pool, account_id, "ACL").await.unwrap();
+    let http = reqwest::Client::new();
+
+    let before = audit_event_count(&pool, "acl_member_added").await;
+    add_member(
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98111111),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
+    let after = audit_event_count(&pool, "acl_member_added").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn update_member_permission_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 20000104, "Owner").await;
+    let acl = create_acl(&pool, account_id, "ACL").await.unwrap();
+    let http = reqwest::Client::new();
+
+    let member = add_member(
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98111112),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
+
+    let before = audit_event_count(&pool, "acl_member_permission_changed").await;
+    update_member_permission(
+        &pool,
+        acl.id,
+        member.id,
+        account_id,
+        AclPermission::ReadWrite,
+    )
+    .await
+    .unwrap();
+    let after = audit_event_count(&pool, "acl_member_permission_changed").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn remove_member_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 20000105, "Owner").await;
+    let acl = create_acl(&pool, account_id, "ACL").await.unwrap();
+    let http = reqwest::Client::new();
+
+    let member = add_member(
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98111113),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
+
+    let before = audit_event_count(&pool, "acl_member_removed").await;
+    remove_member(&pool, acl.id, member.id, account_id)
+        .await
+        .unwrap();
+    let after = audit_event_count(&pool, "acl_member_removed").await;
+    assert_eq!(after, before + 1);
+}

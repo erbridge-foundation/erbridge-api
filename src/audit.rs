@@ -47,6 +47,40 @@ pub enum AuditEvent {
         map_id: Uuid,
         name: String,
     },
+    AclCreated {
+        account_id: Uuid,
+        acl_id: Uuid,
+        name: String,
+    },
+    AclRenamed {
+        account_id: Uuid,
+        acl_id: Uuid,
+        old_name: String,
+        new_name: String,
+    },
+    AclDeleted {
+        account_id: Uuid,
+        acl_id: Uuid,
+        name: String,
+    },
+    AclMemberAdded {
+        account_id: Uuid,
+        acl_id: Uuid,
+        member_id: Uuid,
+        member_type: String,
+        permission: String,
+    },
+    AclMemberPermissionChanged {
+        account_id: Uuid,
+        acl_id: Uuid,
+        member_id: Uuid,
+        permission: String,
+    },
+    AclMemberRemoved {
+        account_id: Uuid,
+        acl_id: Uuid,
+        member_id: Uuid,
+    },
 }
 
 impl AuditEvent {
@@ -62,6 +96,12 @@ impl AuditEvent {
             Self::GhostCharacterClaimed { .. } => "ghost_character_claimed",
             Self::MapCreated { .. } => "map_created",
             Self::MapDeleted { .. } => "map_deleted",
+            Self::AclCreated { .. } => "acl_created",
+            Self::AclRenamed { .. } => "acl_renamed",
+            Self::AclDeleted { .. } => "acl_deleted",
+            Self::AclMemberAdded { .. } => "acl_member_added",
+            Self::AclMemberPermissionChanged { .. } => "acl_member_permission_changed",
+            Self::AclMemberRemoved { .. } => "acl_member_removed",
         }
     }
 
@@ -121,6 +161,52 @@ impl AuditEvent {
             Self::MapDeleted { map_id, name, .. } => json!({
                 "map_id": map_id,
                 "name": name,
+            }),
+            Self::AclCreated { acl_id, name, .. } => json!({
+                "acl_id": acl_id,
+                "name": name,
+            }),
+            Self::AclRenamed {
+                acl_id,
+                old_name,
+                new_name,
+                ..
+            } => json!({
+                "acl_id": acl_id,
+                "old_name": old_name,
+                "new_name": new_name,
+            }),
+            Self::AclDeleted { acl_id, name, .. } => json!({
+                "acl_id": acl_id,
+                "name": name,
+            }),
+            Self::AclMemberAdded {
+                acl_id,
+                member_id,
+                member_type,
+                permission,
+                ..
+            } => json!({
+                "acl_id": acl_id,
+                "member_id": member_id,
+                "member_type": member_type,
+                "permission": permission,
+            }),
+            Self::AclMemberPermissionChanged {
+                acl_id,
+                member_id,
+                permission,
+                ..
+            } => json!({
+                "acl_id": acl_id,
+                "member_id": member_id,
+                "permission": permission,
+            }),
+            Self::AclMemberRemoved {
+                acl_id, member_id, ..
+            } => json!({
+                "acl_id": acl_id,
+                "member_id": member_id,
             }),
         }
     }

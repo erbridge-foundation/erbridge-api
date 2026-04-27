@@ -166,9 +166,44 @@ pub async fn update_member_permission(
     .try_into()
 }
 
+pub async fn update_member_permission_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    member_id: Uuid,
+    permission: AclPermission,
+) -> Result<AclMember> {
+    sqlx::query_as!(
+        AclMemberRow,
+        r#"
+        UPDATE acl_member
+        SET permission = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING id, acl_id, member_type,
+                  COALESCE(eve_entity_id, (SELECT eve_character_id FROM eve_character WHERE id = character_id)) AS "eve_entity_id",
+                  character_id, name, permission, created_at, updated_at
+        "#,
+        member_id,
+        permission.to_string(),
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .context("failed to update acl member permission")?
+    .try_into()
+}
+
 pub async fn delete_member(pool: &PgPool, member_id: Uuid) -> Result<()> {
     sqlx::query!("DELETE FROM acl_member WHERE id = $1", member_id)
         .execute(pool)
+        .await
+        .context("failed to delete acl member")?;
+    Ok(())
+}
+
+pub async fn delete_member_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    member_id: Uuid,
+) -> Result<()> {
+    sqlx::query!("DELETE FROM acl_member WHERE id = $1", member_id)
+        .execute(&mut **tx)
         .await
         .context("failed to delete acl member")?;
     Ok(())

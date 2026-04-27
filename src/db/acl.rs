@@ -96,6 +96,27 @@ pub async fn update_acl_name(pool: &PgPool, id: Uuid, name: &str) -> Result<Acl>
     .context("failed to update acl name")
 }
 
+pub async fn update_acl_name_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    id: Uuid,
+    name: &str,
+) -> Result<Acl> {
+    sqlx::query_as!(
+        Acl,
+        r#"
+        UPDATE acl
+        SET name = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING id, name, owner_account_id, pending_delete_at, created_at, updated_at
+        "#,
+        id,
+        name,
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .context("failed to update acl name")
+}
+
 pub async fn delete_acl(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<()> {
     sqlx::query!("DELETE FROM acl WHERE id = $1", id)
         .execute(&mut **tx)

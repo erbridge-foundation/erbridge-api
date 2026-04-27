@@ -6,6 +6,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::{
+    audit::{self, AuditEvent},
     db::{
         acl::{self, Acl},
         acl_member::{self, AclMember, AclPermission, MemberType},
@@ -63,6 +64,17 @@ pub async fn create_acl(
         .await
         .context("insert_acl")
         .map_err(AclError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(owner_account_id),
+        AuditEvent::AclCreated {
+            account_id: owner_account_id,
+            acl_id: acl.id,
+            name: acl.name.clone(),
+        },
+    )
+    .await
+    .map_err(AclError::Internal)?;
     tx.commit()
         .await
         .context("commit tx")
@@ -82,10 +94,33 @@ pub async fn rename_acl(
     let acl = require_acl(pool, acl_id).await?;
     require_acl_permission(&acl, requesting_account_id, pool, Permission::Admin).await?;
 
-    let updated = acl::update_acl_name(pool, acl_id, name)
+    let old_name = acl.name.clone();
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(AclError::Internal)?;
+    let updated = acl::update_acl_name_in_tx(&mut tx, acl_id, name)
         .await
         .context("update_acl_name")
         .map_err(AclError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclRenamed {
+            account_id: requesting_account_id,
+            acl_id,
+            old_name,
+            new_name: updated.name.clone(),
+        },
+    )
+    .await
+    .map_err(AclError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(AclError::Internal)?;
+
     info!(acl_id = %acl_id, "acl renamed");
     Ok(updated)
 }
@@ -99,6 +134,7 @@ pub async fn delete_acl(
     let acl = require_acl(pool, acl_id).await?;
     require_acl_permission(&acl, requesting_account_id, pool, Permission::Admin).await?;
 
+    let acl_name = acl.name.clone();
     let mut tx = pool
         .begin()
         .await
@@ -108,6 +144,17 @@ pub async fn delete_acl(
         .await
         .context("delete_acl")
         .map_err(AclError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclDeleted {
+            account_id: requesting_account_id,
+            acl_id,
+            name: acl_name,
+        },
+    )
+    .await
+    .map_err(AclError::Internal)?;
     tx.commit()
         .await
         .context("commit tx")
@@ -189,6 +236,19 @@ pub async fn add_member(
     .await
     .context("insert_acl_member")
     .map_err(AclError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclMemberAdded {
+            account_id: requesting_account_id,
+            acl_id,
+            member_id: member.id,
+            member_type: member_type.to_string(),
+            permission: permission.to_string(),
+        },
+    )
+    .await
+    .map_err(AclError::Internal)?;
     tx.commit()
         .await
         .context("commit tx")
@@ -221,10 +281,32 @@ pub async fn update_member_permission(
     let member = require_member(pool, acl_id, member_id).await?;
     validate_permission_for_type(permission, member.member_type)?;
 
-    let updated = acl_member::update_member_permission(pool, member_id, permission)
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(AclError::Internal)?;
+    let updated = acl_member::update_member_permission_in_tx(&mut tx, member_id, permission)
         .await
         .context("update_member_permission")
         .map_err(AclError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclMemberPermissionChanged {
+            account_id: requesting_account_id,
+            acl_id,
+            member_id,
+            permission: permission.to_string(),
+        },
+    )
+    .await
+    .map_err(AclError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(AclError::Internal)?;
+
     info!(
         acl_id = %acl_id,
         member_id = %member_id,
@@ -247,10 +329,31 @@ pub async fn remove_member(
     // Verify the member belongs to this ACL before deleting.
     require_member(pool, acl_id, member_id).await?;
 
-    acl_member::delete_member(pool, member_id)
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(AclError::Internal)?;
+    acl_member::delete_member_in_tx(&mut tx, member_id)
         .await
         .context("delete_member")
         .map_err(AclError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclMemberRemoved {
+            account_id: requesting_account_id,
+            acl_id,
+            member_id,
+        },
+    )
+    .await
+    .map_err(AclError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(AclError::Internal)?;
+
     info!(acl_id = %acl_id, member_id = %member_id, "acl member removed");
     Ok(())
 }
