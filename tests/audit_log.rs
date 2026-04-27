@@ -2,9 +2,12 @@ mod common;
 
 use chrono::Utc;
 use erbridge_api::{
-    db::account,
-    services::auth::{
-        AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register,
+    db::{account, sde_solar_system::SdeSolarSystem},
+    services::{
+        auth::{AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register},
+        map::{
+            AddSignatureInput, CreateConnectionInput, add_signature, create_connection, create_map,
+        },
     },
 };
 use uuid::Uuid;
@@ -304,4 +307,144 @@ async fn test_purge_writes_audit_entries() {
         .collect();
     assert!(purged_ids.contains(&id1.to_string()));
     assert!(purged_ids.contains(&id2.to_string()));
+}
+
+// ---------------------------------------------------------------------------
+// map_data_mutated (A6)
+// ---------------------------------------------------------------------------
+
+async fn seed_solar(pool: &sqlx::PgPool, id: i64) {
+    let mut tx = pool.begin().await.unwrap();
+    erbridge_api::db::sde_solar_system::bulk_upsert_solar_systems(
+        &mut tx,
+        &[SdeSolarSystem {
+            solar_system_id: id,
+            name: format!("AuditSystem{id}"),
+            region_id: Some(10000001),
+            constellation_id: Some(20000001),
+            faction_id: None,
+            star_id: None,
+            security_status: Some(0.0),
+            security_class: Some("H".into()),
+            wh_class: Some("C1".into()),
+            wormhole_class_id: None,
+            luminosity: None,
+            radius: None,
+            border: Some(false),
+            corridor: Some(false),
+            fringe: Some(false),
+            hub: Some(false),
+            international: Some(false),
+            regional: Some(false),
+            visual_effect: None,
+            name_i18n: None,
+            planet_ids: None,
+            stargate_ids: None,
+            disallowed_anchor_categories: None,
+            disallowed_anchor_groups: None,
+            position: None,
+            position_2d: None,
+        }],
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_create_connection_writes_map_data_mutated_audit() {
+    let (_pg, pool) = common::setup_db().await;
+    let aes_key = common::test_aes_key();
+
+    seed_solar(&pool, 31000901).await;
+    seed_solar(&pool, 31000902).await;
+
+    let account_id = login_or_register(&pool, &aes_key, login_input(99901, "Map Pilot"))
+        .await
+        .unwrap();
+
+    let map = create_map(
+        &pool,
+        account_id,
+        "Audit Conn Map",
+        "audit-conn-map",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    create_connection(
+        &pool,
+        account_id,
+        CreateConnectionInput {
+            map_id: map.id,
+            system_a_id: 31000901,
+            system_b_id: 31000902,
+        },
+    )
+    .await
+    .unwrap();
+
+    let rows = fetch_audit(&pool).await;
+    let mutated = rows
+        .iter()
+        .find(|r| r.event_type == "map_data_mutated")
+        .unwrap();
+    assert_eq!(mutated.details["kind"], "ConnectionCreated");
+    assert_eq!(mutated.details["map_id"], map.id.to_string());
+    assert_eq!(mutated.actor_account_id, Some(account_id));
+}
+
+#[tokio::test]
+async fn test_add_signature_writes_map_data_mutated_audit() {
+    let (_pg, pool) = common::setup_db().await;
+    let aes_key = common::test_aes_key();
+
+    seed_solar(&pool, 31000911).await;
+
+    let account_id = login_or_register(&pool, &aes_key, login_input(99911, "Sig Pilot"))
+        .await
+        .unwrap();
+
+    let map = create_map(
+        &pool,
+        account_id,
+        "Audit Sig Map",
+        "audit-sig-map",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    add_signature(
+        &pool,
+        account_id,
+        AddSignatureInput {
+            map_id: map.id,
+            system_id: 31000911,
+            sig_code: "ABC-123".into(),
+            sig_type: "wormhole".into(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let rows = fetch_audit(&pool).await;
+    let mutated = rows
+        .iter()
+        .find(|r| r.event_type == "map_data_mutated")
+        .unwrap();
+    assert_eq!(mutated.details["kind"], "SignatureAdded");
 }
