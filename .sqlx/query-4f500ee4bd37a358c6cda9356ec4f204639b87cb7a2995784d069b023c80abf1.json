@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE map_connections\n        SET status = CASE\n            WHEN status IN ('collapsed', 'expired') THEN status\n            WHEN (SELECT COUNT(*) FROM map_connection_ends WHERE connection_id = $1 AND signature_id IS NOT NULL) = 0\n                THEN 'partial'\n            WHEN (SELECT COUNT(*) FROM map_connection_ends WHERE connection_id = $1 AND signature_id IS NOT NULL) = 1\n                THEN 'linked'\n            ELSE 'fully_linked'\n        END,\n        updated_at = now()\n        WHERE connection_id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4f500ee4bd37a358c6cda9356ec4f204639b87cb7a2995784d069b023c80abf1"
+}

@@ -5,7 +5,6 @@ use strum::{Display, EnumString};
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionStatus {
-    Tentative,
     Partial,
     Linked,
     FullyLinked,

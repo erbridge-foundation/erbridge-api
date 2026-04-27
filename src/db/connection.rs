@@ -284,8 +284,6 @@ async fn recompute_connection_status(
         UPDATE map_connections
         SET status = CASE
             WHEN status IN ('collapsed', 'expired') THEN status
-            WHEN (SELECT COUNT(*) FROM map_connection_ends WHERE connection_id = $1) < 2
-                THEN 'tentative'
             WHEN (SELECT COUNT(*) FROM map_connection_ends WHERE connection_id = $1 AND signature_id IS NOT NULL) = 0
                 THEN 'partial'
             WHEN (SELECT COUNT(*) FROM map_connection_ends WHERE connection_id = $1 AND signature_id IS NOT NULL) = 1
