@@ -12,6 +12,12 @@ the architectural level.
 **Do not read or explore the `zz-ref/` directory** unless the user explicitly instructs you to.
 It contains reference/scratch material that is not part of the active codebase.
 
+## Architecture decisions
+
+Read `DECISIONS.md` for decisions that are not obvious from the code —
+particularly the `audit_log` scope rule (admin/compliance actions only; map
+mutations go to `map_events` instead).
+
 ## Project conventions
 
 - All service/DB functions return `anyhow::Result<T>`; handlers map errors to `StatusCode`

@@ -65,16 +65,12 @@ production code. These are silent compliance/security gaps — actions happen wi
   acl_id }`. Wire `record_in_tx` inside the existing transaction.
 - **Verify:** Extend `tests/map_service_test.rs`.
 
-### A6 [P2] Audit map mutation operations (connections, signatures)
-- **Where:** `src/services/map.rs` — `create_connection`, `delete_connection`,
-  `add_signature`, `delete_signature`, `link_signature`, `update_connection_metadata`.
-  These already write `map_events`, but `audit_log` has no equivalent.
-- **Fix:** Add audit variants for each. Decision: if the goal of `audit_log` is "what did
-  account X do to admin objects" while `map_events` is "what happened to map X", then leave
-  per-mutation events to `map_events` only and add a single `AuditEvent::MapDataMutated
-  { map_id, kind: &'static str }` summary instead. Document the choice in `src/audit.rs` doc
-  comment.
-- **Verify:** Existing `tests/audit_log.rs` plus a new assertion.
+### A6 [P2] ~~Audit map mutation operations (connections, signatures)~~ — REJECTED
+
+Map mutations are gameplay actions, not admin/compliance actions. They are
+already fully recorded in `map_events`. Adding them to `audit_log` would
+conflate two logs with different purposes and retention requirements.
+See `DECISIONS.md` for the full `audit_log` scope rule.
 
 ---
 
