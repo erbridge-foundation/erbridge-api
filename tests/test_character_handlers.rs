@@ -4,14 +4,15 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use chrono::Utc;
 use cookie::Cookie;
+use erbridge_api::dto::auth::SessionClaims;
 use erbridge_api::{
     db::character::find_characters_by_account,
     extractors::SESSION_COOKIE,
-    services::auth::{AttachCharacterInput, LoginInput, attach_character_to_account,
-        login_or_register},
+    services::auth::{
+        AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register,
+    },
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-use erbridge_api::dto::auth::SessionClaims;
 use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

@@ -18,7 +18,7 @@ CREATE TABLE map_connections (
     connection_id UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     map_id        UUID        NOT NULL REFERENCES map(id) ON DELETE CASCADE,
     status        TEXT        NOT NULL DEFAULT 'partial'
-                      CHECK (status IN ('tentative','partial','linked','fully_linked','collapsed','expired')),
+                      CHECK (status IN ('partial','linked','fully_linked','collapsed','expired')),
     life_state    TEXT        CHECK (life_state IN ('fresh','eol') OR life_state IS NULL),
     mass_state    TEXT        CHECK (mass_state IN ('stable','reduced','critical') OR mass_state IS NULL),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
