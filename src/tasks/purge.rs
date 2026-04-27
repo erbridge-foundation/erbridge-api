@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::FutureExt;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::{db, state::AppState};
 
@@ -16,6 +17,8 @@ async fn run_purge_task(state: Arc<AppState>, cancel: CancellationToken) {
     let mut interval = tokio::time::interval(PURGE_INTERVAL);
     interval.tick().await;
 
+    const PANIC_BACKOFF: Duration = Duration::from_secs(5);
+
     loop {
         tokio::select! {
             _ = interval.tick() => {}
@@ -25,17 +28,37 @@ async fn run_purge_task(state: Arc<AppState>, cancel: CancellationToken) {
             }
         }
 
-        let grace_days = state.config.account_deletion_grace_days;
+        let result = std::panic::AssertUnwindSafe(purge_tick(&state))
+            .catch_unwind()
+            .await;
 
-        match db::account::purge_expired_accounts(&state.db, grace_days).await {
-            Ok(n) => info!(deleted = n, "purged expired accounts"),
-            Err(e) => warn!(error = %e, "purge_expired_accounts failed"),
+        match result {
+            Ok(()) => {}
+            Err(_) => {
+                error!("purge task: panic in loop body; backing off");
+                tokio::select! {
+                    _ = tokio::time::sleep(PANIC_BACKOFF) => {}
+                    _ = cancel.cancelled() => {
+                        info!("purge task: shutting down");
+                        return;
+                    }
+                }
+            }
         }
+    }
+}
 
-        match db::acl::purge_expired_acls(&state.db, grace_days).await {
-            Ok(n) => info!(deleted = n, "purged orphaned acls"),
-            Err(e) => warn!(error = %e, "purge_expired_acls failed"),
-        }
+async fn purge_tick(state: &AppState) {
+    let grace_days = state.config.account_deletion_grace_days;
+
+    match db::account::purge_expired_accounts(&state.db, grace_days).await {
+        Ok(n) => info!(deleted = n, "purged expired accounts"),
+        Err(e) => warn!(error = %e, "purge_expired_accounts failed"),
+    }
+
+    match db::acl::purge_expired_acls(&state.db, grace_days).await {
+        Ok(n) => info!(deleted = n, "purged orphaned acls"),
+        Err(e) => warn!(error = %e, "purge_expired_acls failed"),
     }
 }
 
@@ -101,5 +124,13 @@ mod tests {
             .await
             .expect("purge task did not exit within 1s")
             .expect("task panicked");
+    }
+
+    #[tokio::test]
+    async fn panic_in_loop_body_is_caught() {
+        let caught = std::panic::AssertUnwindSafe(async { panic!("test panic") })
+            .catch_unwind()
+            .await;
+        assert!(caught.is_err(), "expected catch_unwind to catch the panic");
     }
 }

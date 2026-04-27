@@ -5,6 +5,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use futures::FutureExt;
 use reqwest::header::CACHE_CONTROL;
 use serde::Deserialize;
 use tokio::{sync::broadcast, time::sleep};
@@ -59,6 +60,7 @@ pub fn spawn_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
 
 async fn run_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
+    const PANIC_BACKOFF: Duration = Duration::from_secs(5);
 
     loop {
         if cancel.is_cancelled() {
@@ -66,103 +68,27 @@ async fn run_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
             return;
         }
 
-        let characters = match find_all_pollable_characters(&state.db, &state.config.aes_key).await
-        {
-            Ok(c) => c,
-            Err(e) => {
-                error!(error = %e, "location poller: failed to fetch characters");
+        let result = std::panic::AssertUnwindSafe(location_poller_tick(
+            Arc::clone(&state),
+            &mut next_poll_at,
+        ))
+        .catch_unwind()
+        .await;
+
+        match result {
+            Ok(()) => {}
+            Err(_) => {
+                error!("location poller: panic in loop body; resetting state and backing off");
+                next_poll_at.clear();
                 tokio::select! {
-                    _ = sleep(Duration::from_secs(DEFAULT_CACHE_SECS)) => {}
+                    _ = sleep(PANIC_BACKOFF) => {}
                     _ = cancel.cancelled() => {
                         info!("location poller: shutting down");
                         return;
                     }
                 }
-                continue;
-            }
-        };
-
-        // Group by esi_client_id.
-        let mut by_client: HashMap<String, Vec<Character>> = HashMap::new();
-        for ch in characters {
-            // Skip characters nobody is listening to.
-            if state
-                .location_subs
-                .get(&ch.eve_character_id)
-                .map(|s| s.receiver_count() == 0)
-                .unwrap_or(true)
-            {
-                continue;
-            }
-
-            let key = ch
-                .esi_client_id
-                .clone()
-                .unwrap_or_else(|| "__unassigned__".to_string());
-            by_client.entry(key).or_default().push(ch);
-        }
-
-        let mut handles = Vec::new();
-        for (_client_id, chars) in by_client {
-            let state = Arc::clone(&state);
-            let concurrency = state.config.esi_poll_concurrency;
-
-            // Collect only characters that are due.
-            let due: Vec<Character> = chars
-                .into_iter()
-                .filter(|c| {
-                    next_poll_at
-                        .get(&c.eve_character_id)
-                        .map(|t| Instant::now() >= *t)
-                        .unwrap_or(true)
-                })
-                .collect();
-
-            if due.is_empty() {
-                continue;
-            }
-
-            handles.push(tokio::spawn(async move {
-                let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
-                let mut inner_handles = Vec::new();
-
-                for ch in due {
-                    let state = Arc::clone(&state);
-                    let sem = Arc::clone(&semaphore);
-                    inner_handles.push(tokio::spawn(async move {
-                        let _permit = sem.acquire().await;
-                        let ttl = poll_one_location(&state, &ch).await;
-                        (ch.eve_character_id, ttl)
-                    }));
-                }
-
-                let mut results = Vec::new();
-                for h in inner_handles {
-                    match h.await {
-                        Ok(r) => results.push(r),
-                        Err(e) => error!(error = %e, "location poller: inner task panicked"),
-                    }
-                }
-                results
-            }));
-        }
-
-        for handle in handles {
-            match handle.await {
-                Ok(results) => {
-                    for (eve_id, ttl_secs) in results {
-                        let ttl = ttl_secs.unwrap_or(DEFAULT_CACHE_SECS);
-                        next_poll_at.insert(eve_id, Instant::now() + Duration::from_secs(ttl));
-                    }
-                }
-                Err(e) => error!(error = %e, "location poller: client task panicked"),
             }
         }
-
-        // Remove entries from location_subs where nobody is subscribed.
-        state
-            .location_subs
-            .retain(|_, sender| sender.receiver_count() > 0);
 
         let sleep_until = next_poll_at
             .values()
@@ -180,6 +106,99 @@ async fn run_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
             }
         }
     }
+}
+
+async fn location_poller_tick(state: Arc<AppState>, next_poll_at: &mut HashMap<i64, Instant>) {
+    let characters = match find_all_pollable_characters(&state.db, &state.config.aes_key).await {
+        Ok(c) => c,
+        Err(e) => {
+            error!(error = %e, "location poller: failed to fetch characters");
+            sleep(Duration::from_secs(DEFAULT_CACHE_SECS)).await;
+            return;
+        }
+    };
+
+    // Group by esi_client_id.
+    let mut by_client: HashMap<String, Vec<Character>> = HashMap::new();
+    for ch in characters {
+        // Skip characters nobody is listening to.
+        if state
+            .location_subs
+            .get(&ch.eve_character_id)
+            .map(|s| s.receiver_count() == 0)
+            .unwrap_or(true)
+        {
+            continue;
+        }
+
+        let key = ch
+            .esi_client_id
+            .clone()
+            .unwrap_or_else(|| "__unassigned__".to_string());
+        by_client.entry(key).or_default().push(ch);
+    }
+
+    let mut handles = Vec::new();
+    for (_client_id, chars) in by_client {
+        let state = Arc::clone(&state);
+        let concurrency = state.config.esi_poll_concurrency;
+
+        // Collect only characters that are due.
+        let due: Vec<Character> = chars
+            .into_iter()
+            .filter(|c| {
+                next_poll_at
+                    .get(&c.eve_character_id)
+                    .map(|t| Instant::now() >= *t)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if due.is_empty() {
+            continue;
+        }
+
+        handles.push(tokio::spawn(async move {
+            let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
+            let mut inner_handles = Vec::new();
+
+            for ch in due {
+                let state = Arc::clone(&state);
+                let sem = Arc::clone(&semaphore);
+                inner_handles.push(tokio::spawn(async move {
+                    let _permit = sem.acquire().await;
+                    let ttl = poll_one_location(&state, &ch).await;
+                    (ch.eve_character_id, ttl)
+                }));
+            }
+
+            let mut results = Vec::new();
+            for h in inner_handles {
+                match h.await {
+                    Ok(r) => results.push(r),
+                    Err(e) => error!(error = %e, "location poller: inner task panicked"),
+                }
+            }
+            results
+        }));
+    }
+
+    for handle in handles {
+        match handle.await {
+            Ok(results) => {
+                for (eve_id, ttl_secs) in results {
+                    let ttl = ttl_secs.unwrap_or(DEFAULT_CACHE_SECS);
+                    next_poll_at.insert(eve_id, Instant::now() + Duration::from_secs(ttl));
+                }
+            }
+            Err(e) => error!(error = %e, "location poller: client task panicked"),
+        }
+    }
+
+    // Remove entries from location_subs where nobody is subscribed.
+    state
+        .location_subs
+        .retain(|_, sender| sender.receiver_count() > 0);
 }
 
 async fn poll_one_location(state: &AppState, character: &Character) -> Option<u64> {
@@ -375,5 +394,13 @@ mod tests {
             .await
             .expect("location poller did not exit within 1s")
             .expect("task panicked");
+    }
+
+    #[tokio::test]
+    async fn panic_in_loop_body_is_caught() {
+        let caught = std::panic::AssertUnwindSafe(async { panic!("test panic") })
+            .catch_unwind()
+            .await;
+        assert!(caught.is_err(), "expected catch_unwind to catch the panic");
     }
 }

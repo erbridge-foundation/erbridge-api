@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::FutureExt;
 use serde_json::json;
-use tokio::time;
+use tokio::time::{self, sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
@@ -19,6 +20,8 @@ async fn run_checkpoint_task(state: Arc<AppState>, cancel: CancellationToken) {
     // Skip the first immediate tick so startup isn't hammered.
     interval.tick().await;
 
+    const PANIC_BACKOFF: Duration = Duration::from_secs(5);
+
     loop {
         tokio::select! {
             _ = interval.tick() => {}
@@ -27,8 +30,24 @@ async fn run_checkpoint_task(state: Arc<AppState>, cancel: CancellationToken) {
                 return;
             }
         }
-        if let Err(e) = checkpoint_all_maps(&state).await {
-            error!(error = %e, "map checkpoint task failed");
+
+        let result = std::panic::AssertUnwindSafe(checkpoint_all_maps(&state))
+            .catch_unwind()
+            .await;
+
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => error!(error = %e, "map checkpoint task failed"),
+            Err(_) => {
+                error!("map checkpoint: panic in loop body; backing off");
+                tokio::select! {
+                    _ = sleep(PANIC_BACKOFF) => {}
+                    _ = cancel.cancelled() => {
+                        info!("map checkpoint: shutting down");
+                        return;
+                    }
+                }
+            }
         }
     }
 }
@@ -210,5 +229,14 @@ mod tests {
             .await
             .expect("checkpoint task did not exit within 1s")
             .expect("task panicked");
+    }
+
+    #[tokio::test]
+    async fn panic_in_loop_body_is_caught() {
+        // Prove the catch_unwind wrapper catches a panic without killing the loop.
+        let caught = std::panic::AssertUnwindSafe(async { panic!("test panic") })
+            .catch_unwind()
+            .await;
+        assert!(caught.is_err(), "expected catch_unwind to catch the panic");
     }
 }

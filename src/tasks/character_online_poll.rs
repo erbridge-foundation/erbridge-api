@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use futures::FutureExt;
 use reqwest::header::CACHE_CONTROL;
 use serde::Deserialize;
 use tokio::{sync::mpsc, time::sleep};
@@ -52,123 +53,34 @@ async fn run_online_poller(
     // cycle from the DB so newly-added characters are picked up automatically.
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
 
+    const PANIC_BACKOFF: Duration = Duration::from_secs(5);
+
     loop {
         if cancel.is_cancelled() {
             info!("online poller: shutting down");
             return;
         }
 
-        // Drain any incoming character registrations without blocking.
-        while let Ok(ids) = rx.try_recv() {
-            for id in ids {
-                next_poll_at.entry(id).or_insert_with(Instant::now);
-            }
-        }
+        let result = std::panic::AssertUnwindSafe(online_poller_tick(
+            Arc::clone(&state),
+            &mut rx,
+            &mut next_poll_at,
+        ))
+        .catch_unwind()
+        .await;
 
-        // Re-fetch the full pollable set from the DB each cycle so characters
-        // added between login events are picked up without an explicit message.
-        let characters = match find_all_pollable_characters(&state.db, &state.config.aes_key).await
-        {
-            Ok(c) => c,
-            Err(e) => {
-                error!(error = %e, "online poller: failed to fetch characters");
+        match result {
+            Ok(()) => {}
+            Err(_) => {
+                error!("online poller: panic in loop body; resetting state and backing off");
+                next_poll_at.clear();
                 tokio::select! {
-                    _ = sleep(Duration::from_secs(DEFAULT_CACHE_SECS)) => {}
+                    _ = sleep(PANIC_BACKOFF) => {}
                     _ = cancel.cancelled() => {
                         info!("online poller: shutting down");
                         return;
                     }
                 }
-                continue;
-            }
-        };
-
-        // Ensure every character from the DB is in the schedule map.
-        for ch in &characters {
-            next_poll_at
-                .entry(ch.eve_character_id)
-                .or_insert_with(Instant::now);
-        }
-
-        // Group by esi_client_id; fall back to a sentinel for legacy/null rows.
-        let mut by_client: HashMap<String, Vec<&Character>> = HashMap::new();
-        for ch in &characters {
-            let key = ch
-                .esi_client_id
-                .clone()
-                .unwrap_or_else(|| "__unassigned__".to_string());
-            by_client.entry(key).or_default().push(ch);
-        }
-
-        // Spawn one task per client; each processes its characters in batches.
-        let mut handles = Vec::new();
-        for (client_id, chars) in by_client {
-            let state = Arc::clone(&state);
-            let chars: Vec<Character> = chars
-                .into_iter()
-                .map(|c| {
-                    // Shallow clone — we only need the fields; Character has no Clone
-                    // derive, so we reconstruct from the referenced fields.
-                    Character {
-                        id: c.id,
-                        account_id: c.account_id,
-                        eve_character_id: c.eve_character_id,
-                        name: c.name.clone(),
-                        corporation_id: c.corporation_id,
-                        alliance_id: c.alliance_id,
-                        is_main: c.is_main,
-                        is_online: c.is_online,
-                        esi_client_id: c.esi_client_id.clone(),
-                        access_token: c.access_token.clone(),
-                        refresh_token: c.refresh_token.clone(),
-                        esi_token_expires_at: c.esi_token_expires_at,
-                        created_at: c.created_at,
-                        updated_at: c.updated_at,
-                    }
-                })
-                .collect();
-
-            // Snapshot which are due now.
-            let due: Vec<Character> = chars
-                .into_iter()
-                .filter(|c| {
-                    next_poll_at
-                        .get(&c.eve_character_id)
-                        .map(|t| Instant::now() >= *t)
-                        .unwrap_or(true)
-                })
-                .collect();
-
-            if due.is_empty() {
-                continue;
-            }
-
-            let batch_size = state.config.esi_poll_batch_size;
-            let delay_ms = state.config.esi_poll_batch_delay_ms.max(MIN_BATCH_DELAY_MS);
-
-            handles.push(tokio::spawn(async move {
-                let mut results: Vec<(i64, Option<u64>)> = Vec::new();
-                for batch in due.chunks(batch_size) {
-                    for ch in batch {
-                        let ttl = poll_one_online(&state, ch, &client_id).await;
-                        results.push((ch.eve_character_id, ttl));
-                    }
-                    sleep(Duration::from_millis(delay_ms)).await;
-                }
-                results
-            }));
-        }
-
-        // Collect TTLs from all client tasks and update the schedule.
-        for handle in handles {
-            match handle.await {
-                Ok(results) => {
-                    for (eve_id, ttl_secs) in results {
-                        let ttl = ttl_secs.unwrap_or(DEFAULT_CACHE_SECS);
-                        next_poll_at.insert(eve_id, Instant::now() + Duration::from_secs(ttl));
-                    }
-                }
-                Err(e) => error!(error = %e, "online poller client task panicked"),
             }
         }
 
@@ -187,6 +99,119 @@ async fn run_online_poller(
                     return;
                 }
             }
+        }
+    }
+}
+
+async fn online_poller_tick(
+    state: Arc<AppState>,
+    rx: &mut mpsc::Receiver<Vec<i64>>,
+    next_poll_at: &mut HashMap<i64, Instant>,
+) {
+    // Drain any incoming character registrations without blocking.
+    while let Ok(ids) = rx.try_recv() {
+        for id in ids {
+            next_poll_at.entry(id).or_insert_with(Instant::now);
+        }
+    }
+
+    // Re-fetch the full pollable set from the DB each cycle so characters
+    // added between login events are picked up without an explicit message.
+    let characters = match find_all_pollable_characters(&state.db, &state.config.aes_key).await {
+        Ok(c) => c,
+        Err(e) => {
+            error!(error = %e, "online poller: failed to fetch characters");
+            sleep(Duration::from_secs(DEFAULT_CACHE_SECS)).await;
+            return;
+        }
+    };
+
+    // Ensure every character from the DB is in the schedule map.
+    for ch in &characters {
+        next_poll_at
+            .entry(ch.eve_character_id)
+            .or_insert_with(Instant::now);
+    }
+
+    // Group by esi_client_id; fall back to a sentinel for legacy/null rows.
+    let mut by_client: HashMap<String, Vec<&Character>> = HashMap::new();
+    for ch in &characters {
+        let key = ch
+            .esi_client_id
+            .clone()
+            .unwrap_or_else(|| "__unassigned__".to_string());
+        by_client.entry(key).or_default().push(ch);
+    }
+
+    // Spawn one task per client; each processes its characters in batches.
+    let mut handles = Vec::new();
+    for (client_id, chars) in by_client {
+        let state = Arc::clone(&state);
+        let chars: Vec<Character> = chars
+            .into_iter()
+            .map(|c| {
+                // Shallow clone — we only need the fields; Character has no Clone
+                // derive, so we reconstruct from the referenced fields.
+                Character {
+                    id: c.id,
+                    account_id: c.account_id,
+                    eve_character_id: c.eve_character_id,
+                    name: c.name.clone(),
+                    corporation_id: c.corporation_id,
+                    alliance_id: c.alliance_id,
+                    is_main: c.is_main,
+                    is_online: c.is_online,
+                    esi_client_id: c.esi_client_id.clone(),
+                    access_token: c.access_token.clone(),
+                    refresh_token: c.refresh_token.clone(),
+                    esi_token_expires_at: c.esi_token_expires_at,
+                    created_at: c.created_at,
+                    updated_at: c.updated_at,
+                }
+            })
+            .collect();
+
+        // Snapshot which are due now.
+        let due: Vec<Character> = chars
+            .into_iter()
+            .filter(|c| {
+                next_poll_at
+                    .get(&c.eve_character_id)
+                    .map(|t| Instant::now() >= *t)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if due.is_empty() {
+            continue;
+        }
+
+        let batch_size = state.config.esi_poll_batch_size;
+        let delay_ms = state.config.esi_poll_batch_delay_ms.max(MIN_BATCH_DELAY_MS);
+
+        handles.push(tokio::spawn(async move {
+            let mut results: Vec<(i64, Option<u64>)> = Vec::new();
+            for batch in due.chunks(batch_size) {
+                for ch in batch {
+                    let ttl = poll_one_online(&state, ch, &client_id).await;
+                    results.push((ch.eve_character_id, ttl));
+                }
+                sleep(Duration::from_millis(delay_ms)).await;
+            }
+            results
+        }));
+    }
+
+    // Collect TTLs from all client tasks and update the schedule.
+    for handle in handles {
+        match handle.await {
+            Ok(results) => {
+                for (eve_id, ttl_secs) in results {
+                    let ttl = ttl_secs.unwrap_or(DEFAULT_CACHE_SECS);
+                    next_poll_at.insert(eve_id, Instant::now() + Duration::from_secs(ttl));
+                }
+            }
+            Err(e) => error!(error = %e, "online poller client task panicked"),
         }
     }
 }
@@ -365,5 +390,13 @@ mod tests {
             .await
             .expect("online poller did not exit within 1s")
             .expect("task panicked");
+    }
+
+    #[tokio::test]
+    async fn panic_in_loop_body_is_caught() {
+        let caught = std::panic::AssertUnwindSafe(async { panic!("test panic") })
+            .catch_unwind()
+            .await;
+        assert!(caught.is_err(), "expected catch_unwind to catch the panic");
     }
 }
