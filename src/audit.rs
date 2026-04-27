@@ -81,6 +81,16 @@ pub enum AuditEvent {
         acl_id: Uuid,
         member_id: Uuid,
     },
+    AclAttachedToMap {
+        account_id: Uuid,
+        map_id: Uuid,
+        acl_id: Uuid,
+    },
+    AclDetachedFromMap {
+        account_id: Uuid,
+        map_id: Uuid,
+        acl_id: Uuid,
+    },
 }
 
 impl AuditEvent {
@@ -102,6 +112,8 @@ impl AuditEvent {
             Self::AclMemberAdded { .. } => "acl_member_added",
             Self::AclMemberPermissionChanged { .. } => "acl_member_permission_changed",
             Self::AclMemberRemoved { .. } => "acl_member_removed",
+            Self::AclAttachedToMap { .. } => "acl_attached_to_map",
+            Self::AclDetachedFromMap { .. } => "acl_detached_from_map",
         }
     }
 
@@ -207,6 +219,14 @@ impl AuditEvent {
             } => json!({
                 "acl_id": acl_id,
                 "member_id": member_id,
+            }),
+            Self::AclAttachedToMap { map_id, acl_id, .. } => json!({
+                "map_id": map_id,
+                "acl_id": acl_id,
+            }),
+            Self::AclDetachedFromMap { map_id, acl_id, .. } => json!({
+                "map_id": map_id,
+                "acl_id": acl_id,
             }),
         }
     }

@@ -317,6 +317,18 @@ pub async fn attach_acl_to_map(
         .await
         .context("attach_acl")
         .map_err(MapError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclAttachedToMap {
+            account_id: requesting_account_id,
+            map_id,
+            acl_id,
+        },
+    )
+    .await
+    .context("failed to record acl_attached_to_map audit event")
+    .map_err(MapError::Internal)?;
     tx.commit()
         .await
         .context("commit tx")
@@ -344,6 +356,18 @@ pub async fn detach_acl_from_map(
         .await
         .context("detach_acl")
         .map_err(MapError::Internal)?;
+    audit::record_in_tx(
+        &mut tx,
+        Some(requesting_account_id),
+        AuditEvent::AclDetachedFromMap {
+            account_id: requesting_account_id,
+            map_id,
+            acl_id,
+        },
+    )
+    .await
+    .context("failed to record acl_detached_from_map audit event")
+    .map_err(MapError::Internal)?;
     tx.commit()
         .await
         .context("commit tx")

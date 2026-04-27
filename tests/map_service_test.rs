@@ -7,12 +7,13 @@ use erbridge_api::{
         sde_solar_system::SdeSolarSystem,
     },
     services::{
+        acl::create_acl,
         auth::{LoginInput, login_or_register},
         map::{
             AddSignatureInput, CreateConnectionInput, MapError, RouteQuery,
-            UpdateConnectionMetadataInput, add_signature, create_connection, create_map,
-            delete_map, find_routes, get_map, link_signature, list_maps,
-            update_connection_metadata,
+            UpdateConnectionMetadataInput, add_signature, attach_acl_to_map, create_connection,
+            create_map, delete_map, detach_acl_from_map, find_routes, get_map, link_signature,
+            list_maps, update_connection_metadata,
         },
     },
 };
@@ -755,4 +756,59 @@ async fn find_routes_clamps_depth() {
     .await;
 
     assert!(routes.is_ok(), "clamped depth should not error");
+}
+
+// ---------------------------------------------------------------------------
+// Audit log assertions for map–ACL attach/detach (A5)
+// ---------------------------------------------------------------------------
+
+async fn audit_event_count(pool: &sqlx::PgPool, event_type: &str) -> i64 {
+    sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM audit_log WHERE event_type = $1",
+        event_type
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn attach_acl_to_map_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 80001, "Attach Owner").await;
+
+    let map = create_map(&pool, account_id, "Audit Map", "audit-map", None, None)
+        .await
+        .unwrap();
+    let acl = create_acl(&pool, account_id, "Audit ACL").await.unwrap();
+
+    let before = audit_event_count(&pool, "acl_attached_to_map").await;
+    attach_acl_to_map(&pool, map.id, acl.id, account_id)
+        .await
+        .unwrap();
+    let after = audit_event_count(&pool, "acl_attached_to_map").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn detach_acl_from_map_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 80002, "Detach Owner").await;
+
+    let map = create_map(&pool, account_id, "Detach Map", "detach-map", None, None)
+        .await
+        .unwrap();
+    let acl = create_acl(&pool, account_id, "Detach ACL").await.unwrap();
+
+    attach_acl_to_map(&pool, map.id, acl.id, account_id)
+        .await
+        .unwrap();
+
+    let before = audit_event_count(&pool, "acl_detached_from_map").await;
+    detach_acl_from_map(&pool, map.id, acl.id, account_id)
+        .await
+        .unwrap();
+    let after = audit_event_count(&pool, "acl_detached_from_map").await;
+    assert_eq!(after, before + 1);
 }
