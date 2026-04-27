@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE map_connections\n        SET status = 'collapsed', updated_at = now()\n        WHERE connection_id = $1\n          AND map_id = $2\n          AND status NOT IN ('collapsed', 'expired')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cfff4d7352b1b35416152074195743233cc79b2b2d703acb0fd266759de08c31"
+}

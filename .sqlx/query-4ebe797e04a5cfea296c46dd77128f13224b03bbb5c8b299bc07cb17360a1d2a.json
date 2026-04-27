@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE map_signatures\n        SET status = 'deleted', updated_at = now()\n        WHERE signature_id = $1\n          AND map_id = $2\n          AND status NOT IN ('deleted', 'expired')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4ebe797e04a5cfea296c46dd77128f13224b03bbb5c8b299bc07cb17360a1d2a"
+}
