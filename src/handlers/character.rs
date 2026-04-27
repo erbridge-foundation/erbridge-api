@@ -12,13 +12,12 @@ use uuid::Uuid;
 
 use crate::{
     db::account::request_account_deletion,
-    db::character::{
-        DeleteCharacterResult, delete_character, find_characters_by_account, set_main_character,
-    },
+    db::character::{DeleteCharacterResult, find_characters_by_account},
     dto::character::{CharacterListResponse, CharacterResponse},
     dto::envelope::ApiResponse,
     esi::universe::resolve_names,
     extractors::{AccountId, SESSION_COOKIE},
+    services::character::{remove_character as svc_remove_character, set_main as svc_set_main},
     state::AppState,
 };
 
@@ -86,7 +85,7 @@ pub async fn remove_character(
     AccountId(account_id): AccountId,
     Path(character_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    match delete_character(&state.db, account_id, character_id)
+    match svc_remove_character(&state.db, account_id, character_id)
         .await
         .map_err(|e| {
             warn!(error = %e, %account_id, %character_id, "failed to delete character");
@@ -107,12 +106,11 @@ pub async fn set_main(
     AccountId(account_id): AccountId,
     Path(character_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    set_main_character(&state.db, account_id, character_id)
+    svc_set_main(&state.db, account_id, character_id)
         .await
         .map_err(|e| {
             warn!(error = %e, %account_id, %character_id, "failed to set main character");
-            // The service returns an error if the character doesn't belong to
-            // this account — surface that as 404.
+            // Returns an error if the character doesn't belong to this account — surface as 404.
             StatusCode::NOT_FOUND
         })?;
 

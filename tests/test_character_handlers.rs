@@ -17,6 +17,17 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+async fn audit_event_count(pool: &sqlx::PgPool, event_type: &str) -> i64 {
+    sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM audit_log WHERE event_type = $1",
+        event_type
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .unwrap_or(0)
+}
+
 const FAKE_ACCESS: &str = "fake.access";
 const FAKE_REFRESH: &str = "fake.refresh";
 const ESI_CLIENT: &str = "test_client_id";
@@ -281,4 +292,106 @@ async fn delete_character_other_account_returns_404() {
         .await;
 
     resp.assert_status_not_found();
+}
+
+// ── Audit log assertions ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn delete_character_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let esi = MockServer::start().await;
+    stub_names(&esi).await;
+    let state = common::test_state_with_esi(pool.clone(), esi.uri());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+    let aes_key = common::test_aes_key();
+
+    let account_id = make_account(&pool, 91001, "Audit Main").await;
+    attach_character_to_account(
+        &pool,
+        &aes_key,
+        AttachCharacterInput {
+            account_id,
+            eve_character_id: 91002,
+            name: "Audit Alt",
+            corporation_id: CORP_ID,
+            alliance_id: None,
+            esi_client_id: ESI_CLIENT,
+            access_token: FAKE_ACCESS,
+            refresh_token: FAKE_REFRESH,
+            esi_token_expires_at: Utc::now() + chrono::Duration::hours(1),
+        },
+    )
+    .await
+    .unwrap();
+
+    let chars = find_characters_by_account(&pool, &aes_key, account_id)
+        .await
+        .unwrap();
+    let alt_uuid = chars
+        .iter()
+        .find(|c| c.eve_character_id == 91002)
+        .unwrap()
+        .id;
+
+    let before = audit_event_count(&pool, "character_removed").await;
+
+    let jwt = session_jwt(account_id, &state.config.jwt_key);
+    let resp = server
+        .delete(&format!("/api/v1/characters/{alt_uuid}"))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+    resp.assert_status(StatusCode::NO_CONTENT);
+
+    let after = audit_event_count(&pool, "character_removed").await;
+    assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn set_main_character_records_audit_row() {
+    let (_pg, pool) = common::setup_db().await;
+    let esi = MockServer::start().await;
+    stub_names(&esi).await;
+    let state = common::test_state_with_esi(pool.clone(), esi.uri());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+    let aes_key = common::test_aes_key();
+
+    let account_id = make_account(&pool, 92001, "Main Audit Pilot").await;
+    attach_character_to_account(
+        &pool,
+        &aes_key,
+        AttachCharacterInput {
+            account_id,
+            eve_character_id: 92002,
+            name: "Alt Audit Pilot",
+            corporation_id: CORP_ID,
+            alliance_id: None,
+            esi_client_id: ESI_CLIENT,
+            access_token: FAKE_ACCESS,
+            refresh_token: FAKE_REFRESH,
+            esi_token_expires_at: Utc::now() + chrono::Duration::hours(1),
+        },
+    )
+    .await
+    .unwrap();
+
+    let chars = find_characters_by_account(&pool, &aes_key, account_id)
+        .await
+        .unwrap();
+    let alt_uuid = chars
+        .iter()
+        .find(|c| c.eve_character_id == 92002)
+        .unwrap()
+        .id;
+
+    let before = audit_event_count(&pool, "character_set_main").await;
+
+    let jwt = session_jwt(account_id, &state.config.jwt_key);
+    let resp = server
+        .put(&format!("/api/v1/characters/{alt_uuid}/main"))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+    resp.assert_status(StatusCode::NO_CONTENT);
+
+    let after = audit_event_count(&pool, "character_set_main").await;
+    assert_eq!(after, before + 1);
 }

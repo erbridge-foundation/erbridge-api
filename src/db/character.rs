@@ -370,63 +370,67 @@ pub enum DeleteCharacterResult {
     IsMain,
 }
 
-pub async fn delete_character(
-    pool: &PgPool,
+/// Deletes a non-main character within an existing transaction.
+/// Returns the deleted character's `eve_character_id` on success.
+pub async fn delete_character_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
     account_id: Uuid,
     character_id: Uuid,
-) -> Result<DeleteCharacterResult> {
+) -> Result<(DeleteCharacterResult, Option<i64>)> {
     let row = sqlx::query!(
-        "SELECT is_main FROM eve_character WHERE id = $1 AND account_id = $2",
+        "SELECT is_main, eve_character_id FROM eve_character WHERE id = $1 AND account_id = $2",
         character_id,
         account_id,
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await
     .context("failed to fetch character for deletion")?;
 
     match row {
-        None => return Ok(DeleteCharacterResult::NotFound),
-        Some(r) if r.is_main => return Ok(DeleteCharacterResult::IsMain),
-        _ => {}
+        None => Ok((DeleteCharacterResult::NotFound, None)),
+        Some(r) if r.is_main => Ok((DeleteCharacterResult::IsMain, None)),
+        Some(r) => {
+            sqlx::query!(
+                "DELETE FROM eve_character WHERE id = $1 AND account_id = $2",
+                character_id,
+                account_id,
+            )
+            .execute(&mut **tx)
+            .await
+            .context("failed to delete character")?;
+
+            Ok((DeleteCharacterResult::Deleted, Some(r.eve_character_id)))
+        }
     }
-
-    sqlx::query!(
-        "DELETE FROM eve_character WHERE id = $1 AND account_id = $2",
-        character_id,
-        account_id,
-    )
-    .execute(pool)
-    .await
-    .context("failed to delete character")?;
-
-    Ok(DeleteCharacterResult::Deleted)
 }
 
-/// Atomically promotes `new_main_id` to main within a single transaction,
-/// demoting any existing main. Returns an error if `new_main_id` does not
-/// belong to `account_id`.
-pub async fn set_main_character(pool: &PgPool, account_id: Uuid, new_main_id: Uuid) -> Result<()> {
-    let mut tx = pool.begin().await?;
-
-    let exists: bool = sqlx::query_scalar!(
-        "SELECT EXISTS(SELECT 1 FROM eve_character WHERE id = $1 AND account_id = $2)",
+/// Atomically promotes `new_main_id` to main within an existing transaction,
+/// demoting any existing main. Returns the `eve_character_id` of the promoted
+/// character. Returns an error if `new_main_id` does not belong to `account_id`.
+pub async fn set_main_character_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    new_main_id: Uuid,
+) -> Result<i64> {
+    let row = sqlx::query!(
+        "SELECT eve_character_id FROM eve_character WHERE id = $1 AND account_id = $2",
         new_main_id,
         account_id,
     )
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await
-    .context("failed to check character ownership")?
-    .unwrap_or(false);
+    .context("failed to check character ownership")?;
 
-    if !exists {
-        anyhow::bail!("character not found for this account");
-    }
+    let eve_character_id = match row {
+        Some(r) => r.eve_character_id,
+        None => anyhow::bail!("character not found for this account"),
+    };
 
     sqlx::query!(
         "UPDATE eve_character SET is_main = false, updated_at = now() WHERE account_id = $1 AND is_main = true",
         account_id,
     )
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .context("failed to demote current main")?;
 
@@ -434,13 +438,11 @@ pub async fn set_main_character(pool: &PgPool, account_id: Uuid, new_main_id: Uu
         "UPDATE eve_character SET is_main = true, updated_at = now() WHERE id = $1",
         new_main_id,
     )
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .context("failed to promote new main")?;
 
-    tx.commit()
-        .await
-        .context("failed to commit set_main transaction")
+    Ok(eve_character_id)
 }
 
 /// Returns the eve_character_ids for all non-ghost characters belonging to
