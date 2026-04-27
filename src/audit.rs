@@ -45,6 +45,7 @@ pub enum AuditEvent {
     MapDeleted {
         account_id: Uuid,
         map_id: Uuid,
+        name: String,
     },
 }
 
@@ -116,9 +117,10 @@ impl AuditEvent {
                 "map_id": map_id,
                 "name": name,
             }),
-            // actor carries account_id; include map_id so the event is queryable.
-            Self::MapDeleted { map_id, .. } => json!({
+            // actor carries account_id; include map_id and name so the event is queryable.
+            Self::MapDeleted { map_id, name, .. } => json!({
                 "map_id": map_id,
+                "name": name,
             }),
         }
     }
@@ -254,10 +256,15 @@ mod tests {
     fn map_deleted_serialises_correctly() {
         let account_id = test_uuid();
         let map_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
-        let event = AuditEvent::MapDeleted { account_id, map_id };
+        let event = AuditEvent::MapDeleted {
+            account_id,
+            map_id,
+            name: "Test Map".into(),
+        };
         assert_eq!(event.event_type(), "map_deleted");
         let d = event.details();
         assert_eq!(d["map_id"], map_id.to_string());
+        assert_eq!(d["name"], "Test Map");
         assert!(d.get("account_id").is_none());
     }
 

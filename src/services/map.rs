@@ -251,6 +251,12 @@ pub async fn delete_map(
 ) -> Result<(), MapError> {
     require_map_permission(pool, map_id, requesting_account_id, Permission::Admin).await?;
 
+    let map = db_map::find_map_by_id(pool, map_id)
+        .await
+        .context("find_map_by_id")
+        .map_err(MapError::Internal)?
+        .ok_or(MapError::NotFound)?;
+
     let mut tx = pool
         .begin()
         .await
@@ -263,6 +269,7 @@ pub async fn delete_map(
         AuditEvent::MapDeleted {
             account_id: requesting_account_id,
             map_id,
+            name: map.name,
         },
     )
     .await
