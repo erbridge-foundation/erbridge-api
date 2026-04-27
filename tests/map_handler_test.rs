@@ -10,7 +10,9 @@ use erbridge_api::{
     extractors::SESSION_COOKIE,
     services::{
         auth::{LoginInput, login_or_register},
-        map::{AddSignatureInput, CreateConnectionInput, add_signature, create_connection, create_map},
+        map::{
+            AddSignatureInput, CreateConnectionInput, add_signature, create_connection, create_map,
+        },
     },
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -297,9 +299,16 @@ async fn delete_connection_returns_204() {
     seed_solar(&pool, 41000020).await;
     seed_solar(&pool, 41000021).await;
 
-    let map = create_map(&pool, account_id, "Delete Conn Map", "delete-conn-map", None, None)
-        .await
-        .unwrap();
+    let map = create_map(
+        &pool,
+        account_id,
+        "Delete Conn Map",
+        "delete-conn-map",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let (conn, _, _) = create_connection(
         &pool,
@@ -380,9 +389,16 @@ async fn delete_signature_returns_204() {
     let account_id = make_account(&pool, 60000003, "Pilot").await;
     seed_solar(&pool, 41000030).await;
 
-    let map = create_map(&pool, account_id, "Delete Sig Map", "delete-sig-map", None, None)
-        .await
-        .unwrap();
+    let map = create_map(
+        &pool,
+        account_id,
+        "Delete Sig Map",
+        "delete-sig-map",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let sig = add_signature(
         &pool,

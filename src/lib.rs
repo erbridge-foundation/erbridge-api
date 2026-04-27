@@ -81,10 +81,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         // Map CRUD
         .route("/api/v1/maps", get(handlers::map::list_maps_handler))
         .route("/api/v1/maps", post(handlers::map::create_map_handler))
-        .route(
-            "/api/v1/maps/{map_id}",
-            get(handlers::map::get_map_handler),
-        )
+        .route("/api/v1/maps/{map_id}", get(handlers::map::get_map_handler))
         .route(
             "/api/v1/maps/{map_id}",
             patch(handlers::map::update_map_handler),
@@ -160,12 +157,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         // Health
         .route("/api/health", get(handlers::health::health))
         .route("/auth/login", get(handlers::auth::login))
-        .route("/auth/callback", get(handlers::auth::callback))
-        // EVE image proxy (no auth — images are public)
-        .route(
-            "/api/v1/images/{category}/{id}/{variation}",
-            get(handlers::images::image),
-        );
+        .route("/auth/callback", get(handlers::auth::callback));
 
     #[cfg(debug_assertions)]
     {

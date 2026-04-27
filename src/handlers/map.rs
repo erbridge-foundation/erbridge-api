@@ -401,12 +401,10 @@ pub async fn get_map_handler(
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<MapResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
-    let map = get_map(&state.db, account_id, map_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %map_id, %account_id, "failed to get map");
-            map_err(e)
-        })?;
+    let map = get_map(&state.db, account_id, map_id).await.map_err(|e| {
+        warn!(error = %e, %map_id, %account_id, "failed to get map");
+        map_err(e)
+    })?;
 
     Ok(Json(ApiResponse::ok(MapResponse::from(map))))
 }

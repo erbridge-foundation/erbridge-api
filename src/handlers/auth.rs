@@ -306,7 +306,10 @@ pub async fn callback(
 async fn register_account_with_online_poller(state: &AppState, account_id: Uuid) {
     match find_pollable_character_ids_for_account(&state.db, account_id).await {
         Ok(ids) if !ids.is_empty() => {
-            let tx = state.online_poll_tx.as_ref().expect("online_poll_tx not set");
+            let tx = state
+                .online_poll_tx
+                .as_ref()
+                .expect("online_poll_tx not set");
             if let Err(e) = tx.send(ids).await {
                 warn!(error = %e, %account_id, "failed to register characters with online poller");
             }

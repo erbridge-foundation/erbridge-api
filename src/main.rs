@@ -63,9 +63,6 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Spawn background tasks.
-    erbridge_api::tasks::image_cache_cleanup::spawn_image_cache_cleanup(
-        config.image_cache_dir.clone(),
-    );
     erbridge_api::services::sde_solar_system::spawn_sde_update_check(pool.clone(), http.clone());
 
     erbridge_api::tasks::purge::spawn_purge_task(Arc::clone(&poller_state));

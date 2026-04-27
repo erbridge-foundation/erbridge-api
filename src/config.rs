@@ -21,8 +21,6 @@ pub struct Config {
     pub jwt_key: [u8; 32],
     /// Base URL of the frontend; used for post-login redirects.
     pub frontend_url: String,
-    /// Directory for the filesystem-backed EVE image proxy cache.
-    pub image_cache_dir: std::path::PathBuf,
     /// Grace period in days before a pending-delete account is hard-deleted.
     pub account_deletion_grace_days: u32,
     /// Base URL for ESI API calls. Defaults to the live ESI endpoint.
@@ -66,10 +64,6 @@ impl Config {
             .unwrap_or_else(|_| format!("{}/auth/callback", app_url));
 
         let frontend_url = std::env::var("FRONTEND_URL").unwrap_or_else(|_| app_url);
-
-        let image_cache_dir = std::env::var("IMAGE_CACHE_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::env::temp_dir().join("erbridge-images"));
 
         let account_deletion_grace_days = std::env::var("ACCOUNT_DELETION_GRACE_DAYS")
             .ok()
@@ -122,7 +116,6 @@ impl Config {
             aes_key,
             jwt_key,
             frontend_url,
-            image_cache_dir,
             account_deletion_grace_days,
             esi_base,
             esi_refresh_token_max_days,
