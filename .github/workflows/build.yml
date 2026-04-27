@@ -6,12 +6,14 @@ on:
       - main
       - develop
     paths:
-      - 'src/**'
-      - 'migrations/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'Dockerfile'
-      - '.github/workflows/build.yml'
+      - ".sqlx/**"
+      - "src/**"
+      - "tests/**"
+      - "migrations/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Dockerfile"
+      - ".github/workflows/build.yml"
 
 env:
   REGISTRY: ghcr.io
