@@ -79,7 +79,6 @@ pub fn test_state(pool: sqlx::PgPool) -> Arc<AppState> {
         aes_key: test_aes_key(),
         jwt_key: test_jwt_key(),
         frontend_url: "http://localhost:3000".into(),
-        image_cache_dir: std::env::temp_dir().join("erbridge-test-images"),
         account_deletion_grace_days: 30,
         esi_base: "http://127.0.0.1:9999".into(),
         esi_refresh_token_max_days: 7,
