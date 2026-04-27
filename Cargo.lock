@@ -884,7 +884,6 @@ dependencies = [
  "dotenvy",
  "futures",
  "jsonwebtoken",
- "once_cell",
  "pg-embed",
  "portpicker",
  "rand 0.10.1",
@@ -897,7 +896,6 @@ dependencies = [
  "strum",
  "thiserror 2.0.18",
  "tokio",
- "tokio-stream",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -3441,7 +3439,6 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]

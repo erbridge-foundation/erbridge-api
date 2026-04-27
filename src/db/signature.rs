@@ -63,11 +63,17 @@ impl TryFrom<SignatureRow> for Signature {
             wormhole_code: row.wormhole_code,
             derived_life_state: row
                 .derived_life_state
-                .map(|s| s.parse().map_err(|_| anyhow::anyhow!("invalid life_state: {s}")))
+                .map(|s| {
+                    s.parse()
+                        .map_err(|_| anyhow::anyhow!("invalid life_state: {s}"))
+                })
                 .transpose()?,
             derived_mass_state: row
                 .derived_mass_state
-                .map(|s| s.parse().map_err(|_| anyhow::anyhow!("invalid mass_state: {s}")))
+                .map(|s| {
+                    s.parse()
+                        .map_err(|_| anyhow::anyhow!("invalid mass_state: {s}"))
+                })
                 .transpose()?,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -194,4 +200,29 @@ pub async fn find_signatures_for_system(
     .into_iter()
     .map(TryInto::try_into)
     .collect()
+}
+
+/// Soft-deletes a signature by setting its status to `deleted`.
+/// Returns `true` if a row was found and updated, `false` if not found.
+pub async fn soft_delete_signature(
+    tx: &mut Transaction<'_, Postgres>,
+    map_id: Uuid,
+    signature_id: Uuid,
+) -> Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE map_signatures
+        SET status = 'deleted', updated_at = now()
+        WHERE signature_id = $1
+          AND map_id = $2
+          AND status NOT IN ('deleted', 'expired')
+        "#,
+        signature_id,
+        map_id,
+    )
+    .execute(&mut **tx)
+    .await
+    .context("failed to soft-delete signature")?;
+
+    Ok(result.rows_affected() > 0)
 }

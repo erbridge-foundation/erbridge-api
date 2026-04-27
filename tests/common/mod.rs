@@ -9,14 +9,14 @@ use erbridge_api::{
     state::AppState,
     tasks::character_location_poll::LocationEvent,
 };
-use jsonwebtoken::{EncodingKey, Header, encode};
 use jsonwebtoken::jwk::JwkSet;
+use jsonwebtoken::{EncodingKey, Header, encode};
 use pg_embed::pg_enums::PgAuthMethod;
-use pg_embed::pg_fetch::{PgFetchSettings, PG_V17};
+use pg_embed::pg_fetch::{PG_V17, PgFetchSettings};
 use pg_embed::postgres::{PgEmbed, PgSettings};
 use reqwest::Client;
 use sha2::{Digest, Sha256};
-use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 const TEST_SECRET: &str = "test-encryption-secret";
@@ -100,7 +100,6 @@ pub fn test_state(pool: sqlx::PgPool) -> Arc<AppState> {
         .build()
         .unwrap();
 
-    let (online_poll_tx, _rx) = mpsc::channel::<Vec<i64>>(1);
     let location_subs: Arc<DashMap<i64, broadcast::Sender<LocationEvent>>> =
         Arc::new(DashMap::new());
 
@@ -110,7 +109,7 @@ pub fn test_state(pool: sqlx::PgPool) -> Arc<AppState> {
         config,
         esi_metadata,
         jwks: Arc::new(RwLock::new(JwkSet { keys: vec![] })),
-        online_poll_tx,
+        online_poll_tx: None,
         location_subs,
     })
 }

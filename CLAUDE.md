@@ -25,12 +25,14 @@ It contains reference/scratch material that is not part of the active codebase.
 
 ## Known issues to be aware of
 
-- `lib.rs` has unused imports (`patch`, `put`, `HashMap`) — placeholders for planned routes
-- `validator`, `once_cell`, `regex`, `tokio-stream` are imported but not yet actively used
-- `handlers::character::delete_account` is referenced in `lib.rs` but the `handlers::character` module does not yet exist
+- `/api/v1/characters` routes (`list_characters`, `remove_character`, `set_main`) are implemented in `handlers::character` but **not registered** in `lib.rs`
+- `handlers::debug::location_subscribe` is debug-only (`#[cfg(debug_assertions)]`) — not present in release builds
+- `db::connection::recompute_connection_status` has a `tentative` branch that is unreachable in practice (both ends are always inserted atomically, so the count is never < 2)
+- `AppState::online_poll_tx` is `Option<Sender<...>>` — `None` in the poller state, `Some` in the router state; send sites use `.as_ref().expect(...)`
 
 ## Testing
 
 - Dev dependencies are set up for integration tests: `axum-test`, `pg-embed`, `wiremock`, `portpicker`, `cookie`.
-- Unit tests live in `#[cfg(test)]` modules within `src/`. No integration tests exist yet.
+- Unit tests live in `#[cfg(test)]` modules within `src/`.
+- Integration tests live in `tests/` — see `tests/common/mod.rs` for shared helpers (`setup_db`, `test_state`, `make_session_jwt`).
 - Always generate unit and/or integration tests

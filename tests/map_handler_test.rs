@@ -10,7 +10,7 @@ use erbridge_api::{
     extractors::SESSION_COOKIE,
     services::{
         auth::{LoginInput, login_or_register},
-        map::create_map,
+        map::{AddSignatureInput, CreateConnectionInput, add_signature, create_connection, create_map},
     },
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -159,7 +159,9 @@ async fn get_maps_returns_list() {
     let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
 
     let account_id = make_account(&pool, 80003, "List Pilot").await;
-    create_map(&pool, account_id, "Listed Map", "listed-map", None, None).await.unwrap();
+    create_map(&pool, account_id, "Listed Map", "listed-map", None, None)
+        .await
+        .unwrap();
 
     let jwt = session_jwt(account_id, &state.config.jwt_key);
     let resp = server
@@ -185,7 +187,9 @@ async fn delete_map_by_non_owner_returns_403() {
     let owner = make_account(&pool, 80004, "Owner Pilot").await;
     let other = make_account(&pool, 80005, "Other Pilot").await;
 
-    let map = create_map(&pool, owner, "Owned Map", "owned-map", None, None).await.unwrap();
+    let map = create_map(&pool, owner, "Owned Map", "owned-map", None, None)
+        .await
+        .unwrap();
     let other_jwt = session_jwt(other, &state.config.jwt_key);
 
     let resp = server
@@ -207,7 +211,16 @@ async fn post_connections_self_loop_returns_422() {
     let account_id = make_account(&pool, 80006, "Loop Pilot Handler").await;
     seed_solar(&pool, 41000001).await;
 
-    let map = create_map(&pool, account_id, "Loop Map Handler", "loop-map-handler", None, None).await.unwrap();
+    let map = create_map(
+        &pool,
+        account_id,
+        "Loop Map Handler",
+        "loop-map-handler",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let jwt = session_jwt(account_id, &state.config.jwt_key);
 
     let resp = server
@@ -231,7 +244,16 @@ async fn get_routes_returns_list() {
     seed_solar(&pool, 41000010).await;
     seed_solar(&pool, 41000011).await;
 
-    let map = create_map(&pool, account_id, "Route Handler Map", "route-handler-map", None, None).await.unwrap();
+    let map = create_map(
+        &pool,
+        account_id,
+        "Route Handler Map",
+        "route-handler-map",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     // Create a connection so there's at least one reachable system.
     erbridge_api::services::map::create_connection(
@@ -259,4 +281,179 @@ async fn get_routes_returns_list() {
     let body: serde_json::Value = resp.json();
     let routes = body["data"]["routes"].as_array().unwrap();
     assert!(!routes.is_empty(), "should have at least one route");
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/maps/:map_id/connections/:conn_id
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn delete_connection_returns_204() {
+    let (_pg, pool) = common::setup_db().await;
+    let state = common::test_state(pool.clone());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+
+    let account_id = make_account(&pool, 60000001, "Pilot").await;
+    seed_solar(&pool, 41000020).await;
+    seed_solar(&pool, 41000021).await;
+
+    let map = create_map(&pool, account_id, "Delete Conn Map", "delete-conn-map", None, None)
+        .await
+        .unwrap();
+
+    let (conn, _, _) = create_connection(
+        &pool,
+        account_id,
+        CreateConnectionInput {
+            map_id: map.id,
+            system_a_id: 41000020,
+            system_b_id: 41000021,
+        },
+    )
+    .await
+    .unwrap();
+
+    let jwt = session_jwt(account_id, &state.config.jwt_key);
+    let resp = server
+        .delete(&format!(
+            "/api/v1/maps/{}/connections/{}",
+            map.id, conn.connection_id
+        ))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+
+    assert_eq!(resp.status_code(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn delete_connection_wrong_map_returns_422() {
+    let (_pg, pool) = common::setup_db().await;
+    let state = common::test_state(pool.clone());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+
+    let account_id = make_account(&pool, 60000002, "Pilot").await;
+    seed_solar(&pool, 41000022).await;
+    seed_solar(&pool, 41000023).await;
+
+    let map_a = create_map(&pool, account_id, "Map A", "del-map-a", None, None)
+        .await
+        .unwrap();
+    let map_b = create_map(&pool, account_id, "Map B", "del-map-b", None, None)
+        .await
+        .unwrap();
+
+    let (conn, _, _) = create_connection(
+        &pool,
+        account_id,
+        CreateConnectionInput {
+            map_id: map_a.id,
+            system_a_id: 41000022,
+            system_b_id: 41000023,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Try to delete connection from map_a using map_b's ID.
+    let jwt = session_jwt(account_id, &state.config.jwt_key);
+    let resp = server
+        .delete(&format!(
+            "/api/v1/maps/{}/connections/{}",
+            map_b.id, conn.connection_id
+        ))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+
+    assert_eq!(resp.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/maps/:map_id/signatures/:sig_id
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn delete_signature_returns_204() {
+    let (_pg, pool) = common::setup_db().await;
+    let state = common::test_state(pool.clone());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+
+    let account_id = make_account(&pool, 60000003, "Pilot").await;
+    seed_solar(&pool, 41000030).await;
+
+    let map = create_map(&pool, account_id, "Delete Sig Map", "delete-sig-map", None, None)
+        .await
+        .unwrap();
+
+    let sig = add_signature(
+        &pool,
+        account_id,
+        AddSignatureInput {
+            map_id: map.id,
+            system_id: 41000030,
+            sig_code: "ABC-123".to_string(),
+            sig_type: "wormhole".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let jwt = session_jwt(account_id, &state.config.jwt_key);
+    let resp = server
+        .delete(&format!(
+            "/api/v1/maps/{}/signatures/{}",
+            map.id, sig.signature_id
+        ))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+
+    assert_eq!(resp.status_code(), StatusCode::NO_CONTENT);
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/maps/:map_id
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn get_map_returns_map() {
+    let (_pg, pool) = common::setup_db().await;
+    let state = common::test_state(pool.clone());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+
+    let account_id = make_account(&pool, 60000004, "Pilot").await;
+
+    let map = create_map(&pool, account_id, "Single Map", "single-map", None, None)
+        .await
+        .unwrap();
+
+    let jwt = session_jwt(account_id, &state.config.jwt_key);
+    let resp = server
+        .get(&format!("/api/v1/maps/{}", map.id))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+
+    resp.assert_status_ok();
+    let body: serde_json::Value = resp.json();
+    assert_eq!(body["data"]["name"].as_str().unwrap(), "Single Map");
+}
+
+#[tokio::test]
+async fn get_map_non_member_returns_403() {
+    let (_pg, pool) = common::setup_db().await;
+    let state = common::test_state(pool.clone());
+    let server = TestServer::new(erbridge_api::router_from_state(state.clone()));
+
+    let owner_id = make_account(&pool, 60000005, "Owner").await;
+    let other_id = make_account(&pool, 60000006, "Other").await;
+
+    let map = create_map(&pool, owner_id, "Private Map", "private-map", None, None)
+        .await
+        .unwrap();
+
+    let jwt = session_jwt(other_id, &state.config.jwt_key);
+    let resp = server
+        .get(&format!("/api/v1/maps/{}", map.id))
+        .add_cookie(Cookie::new(SESSION_COOKIE, jwt))
+        .await;
+
+    assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
 }

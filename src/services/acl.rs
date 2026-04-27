@@ -49,10 +49,24 @@ fn validate_permission_for_type(
 
 /// Creates a new ACL owned by `owner_account_id`. The ACL is immediately
 /// orphaned (pending_delete_at set) until attached to a map (ADR-028).
-pub async fn create_acl(pool: &PgPool, owner_account_id: Uuid, name: &str) -> Result<Acl, AclError> {
-    let mut tx = pool.begin().await.context("begin tx").map_err(AclError::Internal)?;
-    let acl = acl::insert_acl(&mut tx, owner_account_id, name).await.context("insert_acl").map_err(AclError::Internal)?;
-    tx.commit().await.context("commit tx").map_err(AclError::Internal)?;
+pub async fn create_acl(
+    pool: &PgPool,
+    owner_account_id: Uuid,
+    name: &str,
+) -> Result<Acl, AclError> {
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(AclError::Internal)?;
+    let acl = acl::insert_acl(&mut tx, owner_account_id, name)
+        .await
+        .context("insert_acl")
+        .map_err(AclError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(AclError::Internal)?;
 
     info!(acl_id = %acl.id, owner = %owner_account_id, "acl created");
     Ok(acl)
@@ -68,7 +82,10 @@ pub async fn rename_acl(
     let acl = require_acl(pool, acl_id).await?;
     require_acl_permission(&acl, requesting_account_id, pool, Permission::Admin).await?;
 
-    let updated = acl::update_acl_name(pool, acl_id, name).await.context("update_acl_name").map_err(AclError::Internal)?;
+    let updated = acl::update_acl_name(pool, acl_id, name)
+        .await
+        .context("update_acl_name")
+        .map_err(AclError::Internal)?;
     info!(acl_id = %acl_id, "acl renamed");
     Ok(updated)
 }
@@ -82,9 +99,19 @@ pub async fn delete_acl(
     let acl = require_acl(pool, acl_id).await?;
     require_acl_permission(&acl, requesting_account_id, pool, Permission::Admin).await?;
 
-    let mut tx = pool.begin().await.context("begin tx").map_err(AclError::Internal)?;
-    acl::delete_acl(&mut tx, acl_id).await.context("delete_acl").map_err(AclError::Internal)?;
-    tx.commit().await.context("commit tx").map_err(AclError::Internal)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(AclError::Internal)?;
+    acl::delete_acl(&mut tx, acl_id)
+        .await
+        .context("delete_acl")
+        .map_err(AclError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(AclError::Internal)?;
 
     info!(acl_id = %acl_id, "acl deleted");
     Ok(())
@@ -132,7 +159,9 @@ pub async fn add_member(
         }
         _ => {
             let entity_id = eve_entity_id
-                .ok_or_else(|| anyhow::anyhow!("eve_entity_id is required for corporation/alliance members"))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("eve_entity_id is required for corporation/alliance members")
+                })
                 .map_err(AclError::Internal)?;
             let resolved_name = resolve_entity_name(http, esi_base, entity_id).await;
             (Some(entity_id), None, resolved_name)
@@ -142,7 +171,11 @@ pub async fn add_member(
     // Enforce no duplicate members.
     check_no_duplicate_member(pool, acl_id, member_type, db_eve_entity_id, character_id).await?;
 
-    let mut tx = pool.begin().await.context("begin tx").map_err(AclError::Internal)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(AclError::Internal)?;
     let member = acl_member::insert_acl_member(
         &mut tx,
         acl_id,
@@ -155,7 +188,10 @@ pub async fn add_member(
     .await
     .context("insert_acl_member")
     .map_err(AclError::Internal)?;
-    tx.commit().await.context("commit tx").map_err(AclError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(AclError::Internal)?;
 
     info!(
         acl_id = %acl_id,
@@ -210,7 +246,10 @@ pub async fn remove_member(
     // Verify the member belongs to this ACL before deleting.
     require_member(pool, acl_id, member_id).await?;
 
-    acl_member::delete_member(pool, member_id).await.context("delete_member").map_err(AclError::Internal)?;
+    acl_member::delete_member(pool, member_id)
+        .await
+        .context("delete_member")
+        .map_err(AclError::Internal)?;
     info!(acl_id = %acl_id, member_id = %member_id, "acl member removed");
     Ok(())
 }
@@ -218,6 +257,17 @@ pub async fn remove_member(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/// Asserts that `account_id` holds `manage` or higher on the given ACL.
+/// Used by the `list_members` handler.
+pub async fn assert_acl_list_members_permission(
+    pool: &PgPool,
+    acl_id: Uuid,
+    account_id: Uuid,
+) -> Result<(), AclError> {
+    let acl = require_acl(pool, acl_id).await?;
+    require_acl_permission(&acl, account_id, pool, Permission::Manage).await
+}
 
 async fn require_acl(pool: &PgPool, acl_id: Uuid) -> Result<Acl, AclError> {
     acl::find_acl_by_id(pool, acl_id)
@@ -290,7 +340,11 @@ fn required_permission_strings(required: Permission) -> Vec<String> {
     .collect()
 }
 
-async fn require_member(pool: &PgPool, acl_id: Uuid, member_id: Uuid) -> Result<AclMember, AclError> {
+async fn require_member(
+    pool: &PgPool,
+    acl_id: Uuid,
+    member_id: Uuid,
+) -> Result<AclMember, AclError> {
     let member = acl_member::find_member_by_id(pool, member_id)
         .await
         .context("failed to query acl member")

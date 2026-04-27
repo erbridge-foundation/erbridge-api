@@ -13,14 +13,14 @@ use crate::{
     db::acl::find_acls_manageable_by_account,
     db::acl_member::{AclPermission, MemberType, find_members_by_acl},
     dto::acl::{
-        AclListResponse, AclMemberListResponse, AclMemberResponse, AclResponse,
-        AddMemberRequest, CreateAclRequest, RenameAclRequest, UpdateMemberRequest,
+        AclListResponse, AclMemberListResponse, AclMemberResponse, AclResponse, AddMemberRequest,
+        CreateAclRequest, RenameAclRequest, UpdateMemberRequest,
     },
     dto::envelope::ApiResponse,
     extractors::AccountId,
     services::acl::{
-        AclError, add_member, create_acl, delete_acl, remove_member, rename_acl,
-        update_member_permission,
+        AclError, add_member, assert_acl_list_members_permission, create_acl, delete_acl,
+        remove_member, rename_acl, update_member_permission,
     },
     state::AppState,
 };
@@ -55,17 +55,26 @@ pub async fn create(
     Json(body): Json<CreateAclRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<AclResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
     body.validate().map_err(|e| {
-        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(e.to_string())))
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse::error(e.to_string())),
+        )
     })?;
 
     let acl = create_acl(&state.db, account_id, &body.name)
         .await
         .map_err(|e| {
             warn!(error = %e, %account_id, "failed to create acl");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(e.to_string())))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::error(e.to_string())),
+            )
         })?;
 
-    Ok((StatusCode::CREATED, Json(ApiResponse::ok(AclResponse::from(acl)))))
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::ok(AclResponse::from(acl))),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +88,10 @@ pub async fn rename(
     Json(body): Json<RenameAclRequest>,
 ) -> Result<Json<ApiResponse<AclResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
     body.validate().map_err(|e| {
-        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(e.to_string())))
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse::error(e.to_string())),
+        )
     })?;
 
     let acl = rename_acl(&state.db, acl_id, account_id, &body.name)
@@ -87,9 +99,18 @@ pub async fn rename(
         .map_err(|e| {
             warn!(error = %e, %acl_id, %account_id, "failed to rename acl");
             match e {
-                AclError::NotFound => (StatusCode::NOT_FOUND, Json(ApiResponse::error(e.to_string()))),
-                AclError::Forbidden => (StatusCode::FORBIDDEN, Json(ApiResponse::error(e.to_string()))),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(e.to_string()))),
+                AclError::NotFound => (
+                    StatusCode::NOT_FOUND,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
+                AclError::Forbidden => (
+                    StatusCode::FORBIDDEN,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
+                _ => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
             }
         })?;
 
@@ -110,9 +131,18 @@ pub async fn delete(
         .map_err(|e| {
             warn!(error = %e, %acl_id, %account_id, "failed to delete acl");
             match e {
-                AclError::NotFound => (StatusCode::NOT_FOUND, Json(ApiResponse::error(e.to_string()))),
-                AclError::Forbidden => (StatusCode::FORBIDDEN, Json(ApiResponse::error(e.to_string()))),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(e.to_string()))),
+                AclError::NotFound => (
+                    StatusCode::NOT_FOUND,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
+                AclError::Forbidden => (
+                    StatusCode::FORBIDDEN,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
+                _ => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
             }
         })?;
 
@@ -125,15 +155,24 @@ pub async fn delete(
 
 pub async fn list_members(
     State(state): State<Arc<AppState>>,
-    AccountId(_account_id): AccountId,
+    AccountId(account_id): AccountId,
     Path(acl_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<AclMemberListResponse>>, StatusCode> {
-    let members = find_members_by_acl(&state.db, acl_id)
+    assert_acl_list_members_permission(&state.db, acl_id, account_id)
         .await
-        .map_err(|e| {
-            warn!(error = %e, %acl_id, "failed to list acl members");
-            StatusCode::INTERNAL_SERVER_ERROR
+        .map_err(|e| match e {
+            AclError::NotFound => StatusCode::NOT_FOUND,
+            AclError::Forbidden => StatusCode::FORBIDDEN,
+            e => {
+                warn!(error = %e, %acl_id, "failed to check acl list_members permission");
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         })?;
+
+    let members = find_members_by_acl(&state.db, acl_id).await.map_err(|e| {
+        warn!(error = %e, %acl_id, "failed to list acl members");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(ApiResponse::ok(AclMemberListResponse {
         members: members.into_iter().map(AclMemberResponse::from).collect(),
@@ -149,14 +188,21 @@ pub async fn add(
     AccountId(account_id): AccountId,
     Path(acl_id): Path<Uuid>,
     Json(body): Json<AddMemberRequest>,
-) -> Result<(StatusCode, Json<ApiResponse<AclMemberResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<(StatusCode, Json<ApiResponse<AclMemberResponse>>), (StatusCode, Json<ApiResponse<()>>)>
+{
     let member_type = body.member_type.parse::<MemberType>().map_err(|_| {
         let msg = format!("invalid member_type: {}", body.member_type);
-        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(msg)))
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse::error(msg)),
+        )
     })?;
     let permission = body.permission.parse::<AclPermission>().map_err(|_| {
         let msg = format!("invalid permission: {}", body.permission);
-        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(msg)))
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse::error(msg)),
+        )
     })?;
 
     let member = add_member(
@@ -173,16 +219,29 @@ pub async fn add(
     .map_err(|e| {
         warn!(error = %e, %acl_id, %account_id, "failed to add acl member");
         match e {
-            AclError::InvalidPermissionForType(_) | AclError::DuplicateMember => {
-                (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(e.to_string())))
-            }
-            AclError::Forbidden => (StatusCode::FORBIDDEN, Json(ApiResponse::error(e.to_string()))),
-            AclError::NotFound => (StatusCode::NOT_FOUND, Json(ApiResponse::error(e.to_string()))),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(e.to_string()))),
+            AclError::InvalidPermissionForType(_) | AclError::DuplicateMember => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ApiResponse::error(e.to_string())),
+            ),
+            AclError::Forbidden => (
+                StatusCode::FORBIDDEN,
+                Json(ApiResponse::error(e.to_string())),
+            ),
+            AclError::NotFound => (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse::error(e.to_string())),
+            ),
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::error(e.to_string())),
+            ),
         }
     })?;
 
-    Ok((StatusCode::CREATED, Json(ApiResponse::ok(AclMemberResponse::from(member)))))
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::ok(AclMemberResponse::from(member))),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +256,10 @@ pub async fn update_member(
 ) -> Result<Json<ApiResponse<AclMemberResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
     let permission = body.permission.parse::<AclPermission>().map_err(|_| {
         let msg = format!("invalid permission: {}", body.permission);
-        (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiResponse::error(msg)))
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse::error(msg)),
+        )
     })?;
 
     let member = update_member_permission(
@@ -239,11 +301,18 @@ pub async fn delete_member(
         .map_err(|e| {
             warn!(error = %e, %acl_id, %member_id, %account_id, "failed to remove acl member");
             match e {
-                AclError::Forbidden => (StatusCode::FORBIDDEN, Json(ApiResponse::error(e.to_string()))),
-                AclError::NotFound | AclError::MemberAclMismatch => {
-                    (StatusCode::NOT_FOUND, Json(ApiResponse::error(e.to_string())))
-                }
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(e.to_string()))),
+                AclError::Forbidden => (
+                    StatusCode::FORBIDDEN,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
+                AclError::NotFound | AclError::MemberAclMismatch => (
+                    StatusCode::NOT_FOUND,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
+                _ => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse::error(e.to_string())),
+                ),
             }
         })?;
 

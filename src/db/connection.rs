@@ -188,10 +188,7 @@ pub async fn find_connection_in_tx(
     row.map(TryInto::try_into).transpose()
 }
 
-pub async fn find_connections_for_map(
-    pool: &PgPool,
-    map_id: Uuid,
-) -> Result<Vec<Connection>> {
+pub async fn find_connections_for_map(pool: &PgPool, map_id: Uuid) -> Result<Vec<Connection>> {
     sqlx::query_as!(
         ConnectionRow,
         r#"
@@ -333,6 +330,31 @@ pub async fn update_connection_metadata(
     .context("failed to update connection metadata")?;
 
     Ok(())
+}
+
+/// Soft-deletes a connection by setting its status to `collapsed`.
+/// Returns `true` if a row was found and updated, `false` if not found.
+pub async fn soft_delete_connection(
+    tx: &mut Transaction<'_, Postgres>,
+    map_id: Uuid,
+    connection_id: Uuid,
+) -> Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE map_connections
+        SET status = 'collapsed', updated_at = now()
+        WHERE connection_id = $1
+          AND map_id = $2
+          AND status NOT IN ('collapsed', 'expired')
+        "#,
+        connection_id,
+        map_id,
+    )
+    .execute(&mut **tx)
+    .await
+    .context("failed to soft-delete connection")?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 /// Propagates life_state and mass_state from a connection to all its linked signatures.

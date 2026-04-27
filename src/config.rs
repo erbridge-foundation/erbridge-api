@@ -173,8 +173,13 @@ fn parse_esi_clients() -> Result<Vec<EsiClient>> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
     use sha2::{Digest, Sha256};
+
+    /// Serializes tests that mutate env vars to prevent flakiness under parallel execution.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     /// Keys derived from the same secret must be deterministic and distinct
     /// from each other.
@@ -201,10 +206,9 @@ mod tests {
         assert_ne!(key_a, key_b);
     }
 
-    // Env-var tests mutate process-global state; each test cleans up after itself.
-
     #[test]
     fn parse_esi_clients_single_vars() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         unsafe {
             std::env::remove_var("ESI_CLIENT_ID_1");
             std::env::set_var("ESI_CLIENT_ID", "client123");

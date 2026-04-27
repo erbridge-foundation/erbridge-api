@@ -7,7 +7,7 @@ use cookie::Cookie;
 use erbridge_api::{
     dto::acl::{AclListResponse, AclMemberListResponse, AclMemberResponse, AclResponse},
     router_from_state,
-    services::auth::{login_or_register, LoginInput},
+    services::auth::{LoginInput, login_or_register},
 };
 use serde::Deserialize;
 
@@ -510,4 +510,37 @@ async fn delete_member_returns_204() {
         .await
         .json();
     assert!(list.data.members.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/acls/:acl_id/members — non-member gets 403
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn list_members_forbidden_for_non_member() {
+    let (_pg, pool) = common::setup_db().await;
+    let jwt_key = common::test_jwt_key();
+    let owner_id = make_account(&pool, 40000001, "Owner").await;
+    let other_id = make_account(&pool, 40000002, "Other").await;
+
+    let owner_session = common::make_session_jwt(owner_id, &jwt_key);
+    let other_session = common::make_session_jwt(other_id, &jwt_key);
+
+    let mut server = make_server(pool);
+    server.add_cookie(Cookie::new("erbridge_session", owner_session));
+
+    // Owner creates the ACL.
+    let create_resp: AclEnvelope = server
+        .post("/api/v1/acls")
+        .json(&serde_json::json!({ "name": "Private ACL" }))
+        .await
+        .json();
+    let acl_id = create_resp.data.id;
+
+    // Non-member tries to list members — should get 403.
+    let resp = server
+        .get(&format!("/api/v1/acls/{acl_id}/members"))
+        .add_cookie(Cookie::new("erbridge_session", other_session))
+        .await;
+    assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
 }

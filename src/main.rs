@@ -57,8 +57,8 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         esi_metadata: esi_metadata.clone(),
         jwks: Arc::clone(&jwks),
-        // Placeholder sender — replaced immediately after spawn_online_poller.
-        online_poll_tx: tokio::sync::mpsc::channel(1).0,
+        // None here — the poller AppState never sends on this channel.
+        online_poll_tx: None,
         location_subs: Arc::clone(&location_subs),
     });
 
@@ -68,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
     );
     erbridge_api::services::sde_solar_system::spawn_sde_update_check(pool.clone(), http.clone());
 
+    erbridge_api::tasks::purge::spawn_purge_task(Arc::clone(&poller_state));
     let online_poll_tx =
         erbridge_api::tasks::character_online_poll::spawn_online_poller(Arc::clone(&poller_state));
     erbridge_api::tasks::character_location_poll::spawn_location_poller(Arc::clone(&poller_state));

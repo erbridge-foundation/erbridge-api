@@ -6,20 +6,15 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::audit::{self, AuditEvent};
-use crate::db::{
-    acl,
-    connection as db_conn,
-    map as db_map,
-    map_acl,
-    map_event,
-    route as db_route,
-    signature as db_sig,
-};
 use crate::db::connection::{Connection, ConnectionEnd};
 use crate::db::map::{Map, MapWithAcls};
 use crate::db::map_types::{LifeState, MassState, Side};
 use crate::db::route::RouteRow;
 use crate::db::signature::Signature;
+use crate::db::{
+    acl, connection as db_conn, map as db_map, map_acl, map_event, route as db_route,
+    signature as db_sig,
+};
 use crate::permissions::{Permission, effective_permission};
 
 #[derive(Debug, Error)]
@@ -142,12 +137,6 @@ pub async fn list_maps(pool: &PgPool, account_id: Uuid) -> Result<Vec<MapWithAcl
         .collect())
 }
 
-pub async fn list_maps_for_account(pool: &PgPool, account_id: Uuid) -> Result<Vec<Map>, MapError> {
-    db_map::find_maps_for_account(pool, account_id)
-        .await
-        .map_err(MapError::Internal)
-}
-
 pub async fn get_map(pool: &PgPool, account_id: Uuid, map_id: Uuid) -> Result<Map, MapError> {
     let map = db_map::find_map_by_id(pool, map_id)
         .await
@@ -182,7 +171,11 @@ pub async fn create_map(
         require_acl_owner_or_admin(&acl, owner_account_id)?;
     }
 
-    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(MapError::Internal)?;
 
     let map = db_map::insert_map(&mut tx, owner_account_id, name, slug, description)
         .await
@@ -200,7 +193,11 @@ pub async fn create_map(
     audit::record_in_tx(
         &mut tx,
         Some(owner_account_id),
-        AuditEvent::MapCreated { account_id: owner_account_id, map_id: map.id, name: name.to_owned() },
+        AuditEvent::MapCreated {
+            account_id: owner_account_id,
+            map_id: map.id,
+            name: name.to_owned(),
+        },
     )
     .await
     .context("failed to record map created audit event")
@@ -219,7 +216,10 @@ pub async fn create_map(
     .context("failed to append MapCreated event")
     .map_err(MapError::Internal)?;
 
-    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(MapError::Internal)?;
     info!(map_id = %map.id, owner = %owner_account_id, slug, "map created");
     Ok(map)
 }
@@ -251,12 +251,19 @@ pub async fn delete_map(
 ) -> Result<(), MapError> {
     require_map_permission(pool, map_id, requesting_account_id, Permission::Admin).await?;
 
-    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(MapError::Internal)?;
 
     audit::record_in_tx(
         &mut tx,
         Some(requesting_account_id),
-        AuditEvent::MapDeleted { account_id: requesting_account_id, map_id },
+        AuditEvent::MapDeleted {
+            account_id: requesting_account_id,
+            map_id,
+        },
     )
     .await
     .context("failed to record map deleted audit event")
@@ -267,7 +274,10 @@ pub async fn delete_map(
         .context("delete_map")
         .map_err(MapError::Internal)?;
 
-    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(MapError::Internal)?;
     info!(map_id = %map_id, "map deleted");
     Ok(())
 }
@@ -292,12 +302,19 @@ pub async fn attach_acl_to_map(
         .ok_or(MapError::NotFound)?;
     require_acl_owner_or_admin(&acl, requesting_account_id)?;
 
-    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(MapError::Internal)?;
     map_acl::attach_acl(&mut tx, map_id, acl_id)
         .await
         .context("attach_acl")
         .map_err(MapError::Internal)?;
-    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(MapError::Internal)?;
 
     info!(map_id = %map_id, acl_id = %acl_id, "acl attached to map");
     Ok(())
@@ -312,12 +329,19 @@ pub async fn detach_acl_from_map(
 ) -> Result<(), MapError> {
     require_map_permission(pool, map_id, requesting_account_id, Permission::Admin).await?;
 
-    let mut tx = pool.begin().await.context("begin tx").map_err(MapError::Internal)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin tx")
+        .map_err(MapError::Internal)?;
     map_acl::detach_acl(&mut tx, map_id, acl_id)
         .await
         .context("detach_acl")
         .map_err(MapError::Internal)?;
-    tx.commit().await.context("commit tx").map_err(MapError::Internal)?;
+    tx.commit()
+        .await
+        .context("commit tx")
+        .map_err(MapError::Internal)?;
 
     info!(map_id = %map_id, acl_id = %acl_id, "acl detached from map");
     Ok(())
@@ -373,7 +397,9 @@ pub async fn create_connection(
     .await
     .context("failed to append ConnectionCreated event")?;
 
-    tx.commit().await.context("failed to commit create_connection")?;
+    tx.commit()
+        .await
+        .context("failed to commit create_connection")?;
 
     Ok((conn, end_a, end_b))
 }
@@ -387,23 +413,26 @@ pub async fn add_signature(
 
     let mut tx = pool.begin().await.context("failed to begin transaction")?;
 
-    let sig =
-        db_sig::insert_signature(&mut tx, input.map_id, input.system_id, &input.sig_code, &input.sig_type)
-            .await
-            .map_err(|e| {
-                if let Some(dbe) = e.downcast_ref::<sqlx::Error>() {
-                    if let sqlx::Error::Database(db_err) = dbe {
-                        if let Some(constraint) = db_err.constraint() {
-                            if constraint.contains("system_id")
-                                || constraint.contains("sde_solar_system")
-                            {
-                                return MapError::SystemNotFound;
-                            }
-                        }
+    let sig = db_sig::insert_signature(
+        &mut tx,
+        input.map_id,
+        input.system_id,
+        &input.sig_code,
+        &input.sig_type,
+    )
+    .await
+    .map_err(|e| {
+        if let Some(dbe) = e.downcast_ref::<sqlx::Error>() {
+            if let sqlx::Error::Database(db_err) = dbe {
+                if let Some(constraint) = db_err.constraint() {
+                    if constraint.contains("system_id") || constraint.contains("sde_solar_system") {
+                        return MapError::SystemNotFound;
                     }
                 }
-                MapError::Internal(e)
-            })?;
+            }
+        }
+        MapError::Internal(e)
+    })?;
 
     map_event::append_event(
         &mut tx,
@@ -421,7 +450,9 @@ pub async fn add_signature(
     .await
     .context("failed to append SignatureAdded event")?;
 
-    tx.commit().await.context("failed to commit add_signature")?;
+    tx.commit()
+        .await
+        .context("failed to commit add_signature")?;
 
     Ok(sig)
 }
@@ -479,7 +510,9 @@ pub async fn link_signature(
     .await
     .context("failed to append SignatureLinkedToConnectionEnd event")?;
 
-    tx.commit().await.context("failed to commit link_signature")?;
+    tx.commit()
+        .await
+        .context("failed to commit link_signature")?;
 
     Ok(())
 }
@@ -503,9 +536,14 @@ pub async fn update_connection_metadata(
 
     let mut tx = pool.begin().await.context("failed to begin transaction")?;
 
-    db_conn::update_connection_metadata(&mut tx, input.connection_id, input.life_state, input.mass_state)
-        .await
-        .context("failed to update connection metadata")?;
+    db_conn::update_connection_metadata(
+        &mut tx,
+        input.connection_id,
+        input.life_state,
+        input.mass_state,
+    )
+    .await
+    .context("failed to update connection metadata")?;
 
     db_conn::propagate_metadata_to_signatures(&mut tx, input.connection_id)
         .await
@@ -526,7 +564,103 @@ pub async fn update_connection_metadata(
     .await
     .context("failed to append ConnectionMetadataUpdated event")?;
 
-    tx.commit().await.context("failed to commit update_connection_metadata")?;
+    tx.commit()
+        .await
+        .context("failed to commit update_connection_metadata")?;
+
+    Ok(())
+}
+
+/// Soft-deletes a connection (sets status to `collapsed`). Caller must hold `ReadWrite` or higher.
+pub async fn delete_connection(
+    pool: &PgPool,
+    account_id: Uuid,
+    map_id: Uuid,
+    connection_id: Uuid,
+) -> Result<(), MapError> {
+    require_map_permission(pool, map_id, account_id, Permission::ReadWrite).await?;
+
+    let conn = db_conn::find_connection(pool, connection_id)
+        .await
+        .context("failed to look up connection")?
+        .ok_or(MapError::NotFound)?;
+
+    if conn.map_id != map_id {
+        return Err(MapError::ConnectionMapMismatch);
+    }
+
+    let mut tx = pool.begin().await.context("failed to begin transaction")?;
+
+    let found = db_conn::soft_delete_connection(&mut tx, map_id, connection_id)
+        .await
+        .context("failed to soft-delete connection")?;
+
+    if !found {
+        return Err(MapError::NotFound);
+    }
+
+    map_event::append_event(
+        &mut tx,
+        map_id,
+        "connection",
+        &connection_id.to_string(),
+        "ConnectionDeleted",
+        Some(&account_id.to_string()),
+        &json!({}),
+    )
+    .await
+    .context("failed to append ConnectionDeleted event")?;
+
+    tx.commit()
+        .await
+        .context("failed to commit delete_connection")?;
+
+    Ok(())
+}
+
+/// Soft-deletes a signature (sets status to `deleted`). Caller must hold `ReadWrite` or higher.
+pub async fn delete_signature(
+    pool: &PgPool,
+    account_id: Uuid,
+    map_id: Uuid,
+    signature_id: Uuid,
+) -> Result<(), MapError> {
+    require_map_permission(pool, map_id, account_id, Permission::ReadWrite).await?;
+
+    let sig = db_sig::find_signature(pool, signature_id)
+        .await
+        .context("failed to look up signature")?
+        .ok_or(MapError::NotFound)?;
+
+    if sig.map_id != map_id {
+        return Err(MapError::SignatureMapMismatch);
+    }
+
+    let mut tx = pool.begin().await.context("failed to begin transaction")?;
+
+    let found = db_sig::soft_delete_signature(&mut tx, map_id, signature_id)
+        .await
+        .context("failed to soft-delete signature")?;
+
+    if !found {
+        return Err(MapError::NotFound);
+    }
+
+    map_event::append_event(
+        &mut tx,
+        map_id,
+        "signature",
+        &signature_id.to_string(),
+        "SignatureDeleted",
+        Some(&account_id.to_string()),
+        &json!({}),
+    )
+    .await
+    .context("failed to append SignatureDeleted event")?;
+
+    tx.commit()
+        .await
+        .context("failed to commit delete_signature")?;
 
     Ok(())
 }
