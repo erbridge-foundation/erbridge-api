@@ -32,3 +32,4 @@ target
 # custom items
 zz-ref/
 scripts/
+docker-compose.yml
