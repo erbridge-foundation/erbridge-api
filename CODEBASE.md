@@ -163,9 +163,6 @@ erbridge-api/
 | PATCH | `/api/v1/acls/{acl_id}/members/{member_id}` | `handlers::acl::update_member` | Manage (ACL) |
 | DELETE | `/api/v1/acls/{acl_id}/members/{member_id}` | `handlers::acl::delete_member` | Manage (ACL) |
 
-> **Note:** `handlers::character::list_characters`, `remove_character`, `set_main` are **implemented**
-> but **not yet wired into the router** in `lib.rs`. The `/api/v1/characters` routes are missing.
-
 ### Response Envelope
 
 Success: `{"data": <T>}`
@@ -501,13 +498,11 @@ Required ESI scopes: `esi-location.read_location.v1`, `esi-location.read_ship_ty
 ## Known Issues and Gaps
 
 ### Router / Handler Gaps
-- `/api/v1/characters` routes (`list_characters`, `remove_character`, `set_main`) are **implemented** in `handlers::character` but **not registered** in `lib.rs`.
 - Admin-role routes (`admin_purge_account`, `admin_restore_account`) are implemented as stubs that always return 403; they are not registered in `lib.rs`.
 
 ### Architectural / Design Issues
 - **ACL permission bypass in `require_acl_permission`:** Only direct character membership is checked. Corporation/alliance ACL membership does not grant ACL management rights — that is intentional per the design (manage/admin are character-only), but the code does not have a comment to that effect.
 - **`map_connection_ends.signature_id` is UNIQUE but `connection_id` has only two ends:** The UNIQUE constraint means one signature can only be linked to one end, which is correct, but there is no DB constraint preventing two different ends from being in the `fully_linked` state while one signature is already doubly-referenced.
-- **Connection status `tentative` unreachable:** `recompute_connection_status` can set `tentative` when fewer than 2 ends exist, but both ends are always inserted atomically. `tentative` is therefore unreachable in practice; the CHECK constraint and code branch still reference it.
 
 ### Code Quality
 - `rand` 0.10 is used for ESI client selection; version 0.10 is a pre-release series (downgrade to 0.9 causes compile failures, so it stays).

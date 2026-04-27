@@ -25,10 +25,9 @@ It contains reference/scratch material that is not part of the active codebase.
 
 ## Known issues to be aware of
 
-- `/api/v1/characters` routes (`list_characters`, `remove_character`, `set_main`) are implemented in `handlers::character` but **not registered** in `lib.rs`
 - `handlers::debug::location_subscribe` is debug-only (`#[cfg(debug_assertions)]`) — not present in release builds
-- `db::connection::recompute_connection_status` has a `tentative` branch that is unreachable in practice (both ends are always inserted atomically, so the count is never < 2)
 - `AppState::online_poll_tx` is `Option<Sender<...>>` — `None` in the poller state, `Some` in the router state; send sites use `.as_ref().expect(...)`
+- Admin-role routes (`admin_purge_account`, `admin_restore_account`) are implemented as stubs that always return 403; they are not registered in `lib.rs`
 
 ## Testing
 
