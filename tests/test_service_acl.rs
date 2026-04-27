@@ -6,10 +6,10 @@ use erbridge_api::{
     services::acl::{
         add_member, create_acl, delete_acl, remove_member, rename_acl, update_member_permission,
     },
-    services::auth::{login_or_register, LoginInput},
+    services::auth::{LoginInput, login_or_register},
 };
-use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ---------------------------------------------------------------------------
 // ESI stub helpers
@@ -94,7 +94,9 @@ async fn rename_acl_by_owner_succeeds() {
     let account_id = make_account(&pool, 10000002, "Owner").await;
 
     let acl = create_acl(&pool, account_id, "Original").await.unwrap();
-    let updated = rename_acl(&pool, acl.id, account_id, "Renamed").await.unwrap();
+    let updated = rename_acl(&pool, acl.id, account_id, "Renamed")
+        .await
+        .unwrap();
 
     assert_eq!(updated.name, "Renamed");
 }
@@ -109,7 +111,12 @@ async fn rename_acl_without_permission_fails() {
     let result = rename_acl(&pool, acl.id, other_id, "Hijacked").await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("insufficient permission"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("insufficient permission")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -168,12 +175,24 @@ async fn add_member_manage_on_corporation_fails() {
     let http = reqwest::Client::new();
 
     let result = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Manage,
-    ).await;
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Manage,
+    )
+    .await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("only valid for character members"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("only valid for character members")
+    );
 }
 
 #[tokio::test]
@@ -186,12 +205,24 @@ async fn add_member_requires_manage_permission() {
     let http = reqwest::Client::new();
 
     let result = add_member(
-        &pool, &http, "http://unused", acl.id, outsider_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await;
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        outsider_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("insufficient permission"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("insufficient permission")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -206,9 +237,17 @@ async fn add_corporation_member_succeeds() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(member.member_type, MemberType::Corporation);
     assert_eq!(member.eve_entity_id, Some(98000001));
@@ -223,9 +262,17 @@ async fn add_alliance_member_succeeds() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Alliance, Some(99000001), AclPermission::Deny,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Alliance,
+        Some(99000001),
+        AclPermission::Deny,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(member.member_type, MemberType::Alliance);
     assert_eq!(member.permission, AclPermission::Deny);
@@ -243,14 +290,29 @@ async fn duplicate_corporation_member_fails() {
     let http = reqwest::Client::new();
 
     add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     let result = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::ReadWrite,
-    ).await;
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::ReadWrite,
+    )
+    .await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("duplicate_member"));
@@ -272,9 +334,17 @@ async fn add_character_member_creates_ghost_and_returns_member() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, &esi.uri(), acl.id, account_id,
-        MemberType::Character, Some(20000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        &esi.uri(),
+        acl.id,
+        account_id,
+        MemberType::Character,
+        Some(20000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(member.member_type, MemberType::Character);
     assert_eq!(member.permission, AclPermission::Read);
@@ -303,9 +373,17 @@ async fn add_character_member_reuses_existing_character_row() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl.id, owner_id,
-        MemberType::Character, Some(char_eve_id), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        owner_id,
+        MemberType::Character,
+        Some(char_eve_id),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(member.member_type, MemberType::Character);
 
@@ -336,14 +414,29 @@ async fn duplicate_character_member_fails() {
     let http = reqwest::Client::new();
 
     add_member(
-        &pool, &http, &esi.uri(), acl.id, account_id,
-        MemberType::Character, Some(20000002), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        &esi.uri(),
+        acl.id,
+        account_id,
+        MemberType::Character,
+        Some(20000002),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     let result = add_member(
-        &pool, &http, &esi.uri(), acl.id, account_id,
-        MemberType::Character, Some(20000002), AclPermission::ReadWrite,
-    ).await;
+        &pool,
+        &http,
+        &esi.uri(),
+        acl.id,
+        account_id,
+        MemberType::Character,
+        Some(20000002),
+        AclPermission::ReadWrite,
+    )
+    .await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("duplicate_member"));
@@ -361,13 +454,27 @@ async fn update_member_permission_succeeds() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     let updated = update_member_permission(
-        &pool, acl.id, member.id, account_id, AclPermission::ReadWrite,
-    ).await.unwrap();
+        &pool,
+        acl.id,
+        member.id,
+        account_id,
+        AclPermission::ReadWrite,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(updated.permission, AclPermission::ReadWrite);
 }
@@ -380,16 +487,28 @@ async fn update_member_permission_manage_on_corp_fails() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
-    let result = update_member_permission(
-        &pool, acl.id, member.id, account_id, AclPermission::Manage,
-    ).await;
+    let result =
+        update_member_permission(&pool, acl.id, member.id, account_id, AclPermission::Manage).await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("only valid for character members"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("only valid for character members")
+    );
 }
 
 #[tokio::test]
@@ -401,17 +520,35 @@ async fn update_member_permission_wrong_acl_fails() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl_a.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl_a.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     // Try to update acl_a's member using acl_b's ID.
     let result = update_member_permission(
-        &pool, acl_b.id, member.id, account_id, AclPermission::ReadWrite,
-    ).await;
+        &pool,
+        acl_b.id,
+        member.id,
+        account_id,
+        AclPermission::ReadWrite,
+    )
+    .await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("does not belong to acl"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("does not belong to acl")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -426,11 +563,21 @@ async fn remove_member_succeeds() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
-    remove_member(&pool, acl.id, member.id, account_id).await.unwrap();
+    remove_member(&pool, acl.id, member.id, account_id)
+        .await
+        .unwrap();
 
     let members = find_members_by_acl(&pool, acl.id).await.unwrap();
     assert!(members.is_empty());
@@ -445,14 +592,27 @@ async fn remove_member_wrong_acl_fails() {
     let http = reqwest::Client::new();
 
     let member = add_member(
-        &pool, &http, "http://unused", acl_a.id, account_id,
-        MemberType::Corporation, Some(98000001), AclPermission::Read,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl_a.id,
+        account_id,
+        MemberType::Corporation,
+        Some(98000001),
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
 
     let result = remove_member(&pool, acl_b.id, member.id, account_id).await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("does not belong to acl"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("does not belong to acl")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -470,15 +630,34 @@ async fn character_with_manage_permission_can_add_members() {
     // Owner adds manager as a character member with manage.
     let manager_eve_id = 10000026i64;
     add_member(
-        &pool, &http, "http://unused", acl.id, owner_id,
-        MemberType::Character, Some(manager_eve_id), AclPermission::Manage,
-    ).await.unwrap();
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        owner_id,
+        MemberType::Character,
+        Some(manager_eve_id),
+        AclPermission::Manage,
+    )
+    .await
+    .unwrap();
 
     // Manager should be able to add a corp member.
     let result = add_member(
-        &pool, &http, "http://unused", acl.id, manager_id,
-        MemberType::Corporation, Some(98000099), AclPermission::Read,
-    ).await;
+        &pool,
+        &http,
+        "http://unused",
+        acl.id,
+        manager_id,
+        MemberType::Corporation,
+        Some(98000099),
+        AclPermission::Read,
+    )
+    .await;
 
-    assert!(result.is_ok(), "manager should be able to add members: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "manager should be able to add members: {:?}",
+        result.err()
+    );
 }

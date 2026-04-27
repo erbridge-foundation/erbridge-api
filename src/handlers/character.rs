@@ -12,7 +12,9 @@ use uuid::Uuid;
 
 use crate::{
     db::account::request_account_deletion,
-    db::character::{DeleteCharacterResult, delete_character, find_characters_by_account, set_main_character},
+    db::character::{
+        DeleteCharacterResult, delete_character, find_characters_by_account, set_main_character,
+    },
     dto::character::{CharacterListResponse, CharacterResponse},
     dto::envelope::ApiResponse,
     esi::universe::resolve_names,
@@ -45,10 +47,12 @@ pub async fn list_characters(
     ids.sort_unstable();
     ids.dedup();
 
-    let resolved = resolve_names(&state.http, &state.config.esi_base, ids).await.map_err(|e| {
-        warn!(error = %e, %account_id, "failed to resolve corp/alliance names from ESI");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let resolved = resolve_names(&state.http, &state.config.esi_base, ids)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, %account_id, "failed to resolve corp/alliance names from ESI");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let name_map: std::collections::HashMap<i64, String> =
         resolved.into_iter().map(|r| (r.id, r.name)).collect();

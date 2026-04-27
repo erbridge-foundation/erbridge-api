@@ -12,7 +12,11 @@ use tracing::{debug, error, warn};
 
 use crate::{
     db::character::{Character, find_all_pollable_characters},
-    esi::{self, token::{TokenStatus, ensure_token_fresh}},
+    esi::{
+        self,
+        cache::parse_max_age,
+        token::{TokenStatus, ensure_token_fresh},
+    },
     state::AppState,
 };
 
@@ -33,16 +37,6 @@ struct LocationResponse {
     solar_system_id: i64,
     station_id: Option<i64>,
     structure_id: Option<i64>,
-}
-
-/// Parses `max-age=N` from a `Cache-Control` header value.
-pub fn parse_max_age(header: &str) -> Option<u64> {
-    header.split(',').find_map(|part| {
-        let part = part.trim();
-        let rest = part.strip_prefix("max-age")?;
-        let rest = rest.trim().strip_prefix('=')?;
-        rest.trim().parse::<u64>().ok()
-    })
 }
 
 /// Returns the broadcast sender for a character, creating it if absent.
@@ -66,15 +60,15 @@ async fn run_location_poller(state: Arc<AppState>) {
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
 
     loop {
-        let characters =
-            match find_all_pollable_characters(&state.db, &state.config.aes_key).await {
-                Ok(c) => c,
-                Err(e) => {
-                    error!(error = %e, "location poller: failed to fetch characters");
-                    sleep(Duration::from_secs(DEFAULT_CACHE_SECS)).await;
-                    continue;
-                }
-            };
+        let characters = match find_all_pollable_characters(&state.db, &state.config.aes_key).await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                error!(error = %e, "location poller: failed to fetch characters");
+                sleep(Duration::from_secs(DEFAULT_CACHE_SECS)).await;
+                continue;
+            }
+        };
 
         // Group by esi_client_id.
         let mut by_client: HashMap<String, Vec<Character>> = HashMap::new();
@@ -146,8 +140,7 @@ async fn run_location_poller(state: Arc<AppState>) {
                 Ok(results) => {
                     for (eve_id, ttl_secs) in results {
                         let ttl = ttl_secs.unwrap_or(DEFAULT_CACHE_SECS);
-                        next_poll_at
-                            .insert(eve_id, Instant::now() + Duration::from_secs(ttl));
+                        next_poll_at.insert(eve_id, Instant::now() + Duration::from_secs(ttl));
                     }
                 }
                 Err(e) => error!(error = %e, "location poller: client task panicked"),
@@ -204,7 +197,10 @@ async fn poll_one_location(state: &AppState, character: &Character) -> Option<u6
         state.config.esi_base, character.eve_character_id
     );
 
-    debug!(eve_character_id = character.eve_character_id, "location poller: polling");
+    debug!(
+        eve_character_id = character.eve_character_id,
+        "location poller: polling"
+    );
 
     let response = match esi::esi_request(|| async {
         state
@@ -273,26 +269,6 @@ async fn poll_one_location(state: &AppState, character: &Character) -> Option<u6
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_max_age_standard() {
-        assert_eq!(parse_max_age("public, max-age=5"), Some(5));
-    }
-
-    #[test]
-    fn parse_max_age_only() {
-        assert_eq!(parse_max_age("max-age=10"), Some(10));
-    }
-
-    #[test]
-    fn parse_max_age_missing() {
-        assert_eq!(parse_max_age("no-cache"), None);
-    }
-
-    #[test]
-    fn parse_max_age_with_spaces() {
-        assert_eq!(parse_max_age("public, max-age = 5"), Some(5));
-    }
 
     #[test]
     fn broadcast_subscribe_creates_channel() {

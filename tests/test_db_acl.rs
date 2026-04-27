@@ -1,5 +1,6 @@
 mod common;
 
+use chrono::Utc;
 use erbridge_api::db::{
     account::insert_account,
     acl::{
@@ -13,7 +14,6 @@ use erbridge_api::db::{
     character::{InsertCharacterData, insert_character},
     map_acl::attach_acl,
 };
-use chrono::Utc;
 use uuid::Uuid;
 
 async fn make_account(pool: &sqlx::PgPool) -> Uuid {
@@ -132,7 +132,9 @@ async fn set_and_clear_pending_delete() {
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
     tx.commit().await.unwrap();
 
-    set_acl_pending_delete(&pool, acl.id, Some(Utc::now())).await.unwrap();
+    set_acl_pending_delete(&pool, acl.id, Some(Utc::now()))
+        .await
+        .unwrap();
     let found = find_acl_by_id(&pool, acl.id).await.unwrap().unwrap();
     assert!(found.pending_delete_at.is_some());
 
@@ -170,10 +172,14 @@ async fn purge_expired_acls_keeps_recent_orphans() {
     let account_id = make_account(&pool).await;
 
     let mut tx = pool.begin().await.unwrap();
-    let acl = insert_acl(&mut tx, account_id, "Recent Orphan").await.unwrap();
+    let acl = insert_acl(&mut tx, account_id, "Recent Orphan")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
-    set_acl_pending_delete(&pool, acl.id, Some(Utc::now())).await.unwrap();
+    set_acl_pending_delete(&pool, acl.id, Some(Utc::now()))
+        .await
+        .unwrap();
 
     let deleted = purge_expired_acls(&pool, 30).await.unwrap();
     assert_eq!(deleted, 0);
@@ -193,7 +199,9 @@ async fn owner_sees_their_acl() {
     let acl = insert_acl(&mut tx, account_id, "Owned ACL").await.unwrap();
     tx.commit().await.unwrap();
 
-    let acls = find_acls_manageable_by_account(&pool, account_id).await.unwrap();
+    let acls = find_acls_manageable_by_account(&pool, account_id)
+        .await
+        .unwrap();
     assert!(acls.iter().any(|a| a.id == acl.id));
 }
 
@@ -206,12 +214,22 @@ async fn manage_member_sees_acl() {
 
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, owner_id, "Member ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Manage)
-        .await
-        .unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Manage,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 
-    let acls = find_acls_manageable_by_account(&pool, member_id).await.unwrap();
+    let acls = find_acls_manageable_by_account(&pool, member_id)
+        .await
+        .unwrap();
     assert!(acls.iter().any(|a| a.id == acl.id));
 }
 
@@ -223,13 +241,25 @@ async fn read_member_does_not_see_acl_in_manage_list() {
     let char_id = make_character(&pool, member_id, 99992).await;
 
     let mut tx = pool.begin().await.unwrap();
-    let acl = insert_acl(&mut tx, owner_id, "Read Only ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Read)
+    let acl = insert_acl(&mut tx, owner_id, "Read Only ACL")
         .await
         .unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 
-    let acls = find_acls_manageable_by_account(&pool, member_id).await.unwrap();
+    let acls = find_acls_manageable_by_account(&pool, member_id)
+        .await
+        .unwrap();
     assert!(!acls.iter().any(|a| a.id == acl.id));
 }
 
@@ -246,7 +276,13 @@ async fn insert_and_find_character_member() {
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
     let member = insert_acl_member(
-        &mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::ReadWrite,
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::ReadWrite,
     )
     .await
     .unwrap();
@@ -269,7 +305,13 @@ async fn insert_and_find_corporation_member() {
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
     let member = insert_acl_member(
-        &mut tx, acl.id, MemberType::Corporation, Some(98000001), None, "test", AclPermission::Read,
+        &mut tx,
+        acl.id,
+        MemberType::Corporation,
+        Some(98000001),
+        None,
+        "test",
+        AclPermission::Read,
     )
     .await
     .unwrap();
@@ -288,10 +330,28 @@ async fn find_members_by_acl_returns_all() {
 
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Admin)
-        .await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Corporation, Some(98000001), None, "test", AclPermission::Read)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Admin,
+    )
+    .await
+    .unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Corporation,
+        Some(98000001),
+        None,
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 
     let members = find_members_by_acl(&pool, acl.id).await.unwrap();
@@ -307,13 +367,21 @@ async fn update_member_permission_changes_permission() {
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
     let member = insert_acl_member(
-        &mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Read,
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Read,
     )
     .await
     .unwrap();
     tx.commit().await.unwrap();
 
-    let updated = update_member_permission(&pool, member.id, AclPermission::Admin).await.unwrap();
+    let updated = update_member_permission(&pool, member.id, AclPermission::Admin)
+        .await
+        .unwrap();
     assert_eq!(updated.permission, AclPermission::Admin);
 }
 
@@ -326,7 +394,13 @@ async fn delete_member_removes_row() {
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
     let member = insert_acl_member(
-        &mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Read,
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Read,
     )
     .await
     .unwrap();
@@ -346,7 +420,13 @@ async fn acl_member_cascade_deletes_with_acl() {
     let mut tx = pool.begin().await.unwrap();
     let acl = insert_acl(&mut tx, account_id, "ACL").await.unwrap();
     let member = insert_acl_member(
-        &mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Read,
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Read,
     )
     .await
     .unwrap();
@@ -373,9 +453,13 @@ async fn orphaned_acl_still_visible_to_owner_in_manage_list() {
     // ACL is orphaned (pending_delete_at set by insert_acl).
     assert!(acl.pending_delete_at.is_some());
 
-    let acls = find_acls_manageable_by_account(&pool, account_id).await.unwrap();
-    assert!(acls.iter().any(|a| a.id == acl.id),
-        "orphaned ACL within grace period must still appear in manage list");
+    let acls = find_acls_manageable_by_account(&pool, account_id)
+        .await
+        .unwrap();
+    assert!(
+        acls.iter().any(|a| a.id == acl.id),
+        "orphaned ACL within grace period must still appear in manage list"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -391,16 +475,16 @@ async fn attaching_acl_to_map_clears_pending_delete() {
     let acl = insert_acl(&mut tx, account_id, "Orphan ACL").await.unwrap();
     tx.commit().await.unwrap();
 
-    set_acl_pending_delete(&pool, acl.id, Some(Utc::now())).await.unwrap();
+    set_acl_pending_delete(&pool, acl.id, Some(Utc::now()))
+        .await
+        .unwrap();
 
     // Create a map and attach.
     let mut tx = pool.begin().await.unwrap();
-    let map = erbridge_api::db::map::insert_map(
-        &mut tx, account_id, "Test Map", "test-map", None,
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let map = erbridge_api::db::map::insert_map(&mut tx, account_id, "Test Map", "test-map", None)
+        .await
+        .unwrap()
+        .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 

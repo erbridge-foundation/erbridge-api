@@ -1,15 +1,16 @@
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::LazyLock;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::db::map::{Map, MapWithAcls};
 use crate::db::map_types::{LifeState, MassState, Side};
 
-static SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap());
+static SLUG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap());
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,11 @@ impl From<MapWithAcls> for MapResponse {
             slug: m.slug,
             owner_account_id: m.owner_account_id,
             description: m.description,
-            acls: m.acls.into_iter().map(|(id, name)| AclSummary { id, name }).collect(),
+            acls: m
+                .acls
+                .into_iter()
+                .map(|(id, name)| AclSummary { id, name })
+                .collect(),
             created_at: m.created_at,
             updated_at: m.updated_at,
         }

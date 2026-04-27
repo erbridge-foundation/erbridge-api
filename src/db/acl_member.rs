@@ -55,15 +55,17 @@ impl TryFrom<AclMemberRow> for AclMember {
         Ok(Self {
             id: row.id,
             acl_id: row.acl_id,
-            member_type: row.member_type.parse().map_err(|_| {
-                anyhow::anyhow!("invalid member_type in db: {}", row.member_type)
-            })?,
+            member_type: row
+                .member_type
+                .parse()
+                .map_err(|_| anyhow::anyhow!("invalid member_type in db: {}", row.member_type))?,
             eve_entity_id: row.eve_entity_id,
             character_id: row.character_id,
             name: row.name,
-            permission: row.permission.parse().map_err(|_| {
-                anyhow::anyhow!("invalid permission in db: {}", row.permission)
-            })?,
+            permission: row
+                .permission
+                .parse()
+                .map_err(|_| anyhow::anyhow!("invalid permission in db: {}", row.permission))?,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })

@@ -14,7 +14,10 @@ pub async fn location_subscribe(
     Path(character_id): Path<i64>,
 ) -> impl IntoResponse {
     let mut rx = subscribe(&state.location_subs, character_id);
-    info!(eve_character_id = character_id, "debug: holding location subscription");
+    info!(
+        eve_character_id = character_id,
+        "debug: holding location subscription"
+    );
 
     // Wait for up to 60 seconds, logging each event received.
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(60);
@@ -34,7 +37,10 @@ pub async fn location_subscribe(
                 break;
             }
             Err(_) => {
-                debug!(eve_character_id = character_id, "debug: location subscription timed out");
+                debug!(
+                    eve_character_id = character_id,
+                    "debug: location subscription timed out"
+                );
                 break;
             }
         }

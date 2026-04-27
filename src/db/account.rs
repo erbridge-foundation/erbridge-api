@@ -82,9 +82,15 @@ pub async fn reactivate_account(pool: &PgPool, id: Uuid, actor: Option<Uuid>) ->
     .context("failed to reactivate account")?;
 
     if result.rows_affected() > 0 {
-        audit::record_in_tx(&mut tx, actor, AuditEvent::AccountReactivated { account_id: id })
-            .await?;
-        tx.commit().await.context("failed to commit reactivate_account")?;
+        audit::record_in_tx(
+            &mut tx,
+            actor,
+            AuditEvent::AccountReactivated { account_id: id },
+        )
+        .await?;
+        tx.commit()
+            .await
+            .context("failed to commit reactivate_account")?;
         Ok(true)
     } else {
         Ok(false)
@@ -111,11 +117,19 @@ pub async fn purge_expired_accounts(pool: &PgPool, grace_days: u32) -> Result<u6
 
     let count = deleted_ids.len() as u64;
     for account_id in &deleted_ids {
-        audit::record_in_tx(&mut tx, None, AuditEvent::AccountPurged { account_id: *account_id })
-            .await?;
+        audit::record_in_tx(
+            &mut tx,
+            None,
+            AuditEvent::AccountPurged {
+                account_id: *account_id,
+            },
+        )
+        .await?;
     }
 
-    tx.commit().await.context("failed to commit purge_expired_accounts")?;
+    tx.commit()
+        .await
+        .context("failed to commit purge_expired_accounts")?;
     Ok(count)
 }
 
@@ -157,9 +171,15 @@ pub async fn request_account_deletion(
     .context("failed to request account deletion")?;
 
     if result.rows_affected() > 0 {
-        audit::record_in_tx(&mut tx, actor, AuditEvent::AccountDeletionRequested { account_id: id })
-            .await?;
-        tx.commit().await.context("failed to commit request_account_deletion")?;
+        audit::record_in_tx(
+            &mut tx,
+            actor,
+            AuditEvent::AccountDeletionRequested { account_id: id },
+        )
+        .await?;
+        tx.commit()
+            .await
+            .context("failed to commit request_account_deletion")?;
         Ok(true)
     } else {
         Ok(false)

@@ -3,7 +3,9 @@ mod common;
 use chrono::Utc;
 use erbridge_api::{
     db::account,
-    services::auth::{AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register},
+    services::auth::{
+        AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register,
+    },
 };
 use uuid::Uuid;
 
@@ -33,19 +35,17 @@ struct AuditRow {
 }
 
 async fn fetch_audit(pool: &sqlx::PgPool) -> Vec<AuditRow> {
-    sqlx::query!(
-        "SELECT event_type, actor_account_id, details FROM audit_log ORDER BY occurred_at"
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap()
-    .into_iter()
-    .map(|r| AuditRow {
-        event_type: r.event_type,
-        actor_account_id: r.actor_account_id,
-        details: r.details,
-    })
-    .collect()
+    sqlx::query!("SELECT event_type, actor_account_id, details FROM audit_log ORDER BY occurred_at")
+        .fetch_all(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| AuditRow {
+            event_type: r.event_type,
+            actor_account_id: r.actor_account_id,
+            details: r.details,
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -98,13 +98,19 @@ async fn test_ghost_claim_login_writes_audit_entry() {
     // account_registered + ghost_character_claimed
     assert_eq!(rows.len(), 2);
 
-    let registered = rows.iter().find(|r| r.event_type == "account_registered").unwrap();
+    let registered = rows
+        .iter()
+        .find(|r| r.event_type == "account_registered")
+        .unwrap();
     assert_eq!(registered.actor_account_id, None);
     assert_eq!(registered.details["account_id"], account_id.to_string());
     assert_eq!(registered.details["eve_character_id"], 22222i64);
     assert_eq!(registered.details["character_name"], "Ghost Pilot");
 
-    let claimed = rows.iter().find(|r| r.event_type == "ghost_character_claimed").unwrap();
+    let claimed = rows
+        .iter()
+        .find(|r| r.event_type == "ghost_character_claimed")
+        .unwrap();
     assert_eq!(claimed.actor_account_id, None);
     assert_eq!(claimed.details["account_id"], account_id.to_string());
     assert_eq!(claimed.details["eve_character_id"], 22222i64);
@@ -125,7 +131,10 @@ async fn test_character_added_writes_audit_entry() {
         .unwrap();
 
     // Clear the registration entry so we can focus on the add.
-    sqlx::query!("DELETE FROM audit_log").execute(&pool).await.unwrap();
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     attach_character_to_account(
         &pool,
@@ -180,7 +189,10 @@ async fn test_ghost_claim_attach_writes_audit_entry() {
     .await
     .unwrap();
 
-    sqlx::query!("DELETE FROM audit_log").execute(&pool).await.unwrap();
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     attach_character_to_account(
         &pool,
@@ -231,7 +243,10 @@ async fn test_reactivation_writes_audit_entry() {
     .await
     .unwrap();
 
-    sqlx::query!("DELETE FROM audit_log").execute(&pool).await.unwrap();
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let reactivated = account::reactivate_account(&pool, account_id, Some(account_id))
         .await
@@ -270,7 +285,10 @@ async fn test_purge_writes_audit_entries() {
     .await
     .unwrap();
 
-    sqlx::query!("DELETE FROM audit_log").execute(&pool).await.unwrap();
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let count = account::purge_expired_accounts(&pool, 30).await.unwrap();
     assert_eq!(count, 2);

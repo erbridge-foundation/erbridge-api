@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use std::collections::{HashMap, HashSet};
 use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use super::acl::Acl;
@@ -52,14 +52,12 @@ pub async fn detach_acl(
     .await
     .context("failed to detach acl from map")?;
 
-    let remaining: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM map_acl WHERE acl_id = $1",
-        acl_id,
-    )
-    .fetch_one(&mut **tx)
-    .await
-    .context("failed to count remaining map_acl rows")?
-    .unwrap_or(0);
+    let remaining: i64 =
+        sqlx::query_scalar!("SELECT COUNT(*) FROM map_acl WHERE acl_id = $1", acl_id,)
+            .fetch_one(&mut **tx)
+            .await
+            .context("failed to count remaining map_acl rows")?
+            .unwrap_or(0);
 
     if remaining == 0 {
         sqlx::query!(

@@ -11,7 +11,11 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     db::character::{Character, find_all_pollable_characters, update_character_online_status},
-    esi::{self, token::{TokenStatus, ensure_token_fresh}},
+    esi::{
+        self,
+        cache::parse_max_age,
+        token::{TokenStatus, ensure_token_fresh},
+    },
     state::AppState,
 };
 
@@ -21,17 +25,6 @@ const MIN_BATCH_DELAY_MS: u64 = 100;
 #[derive(Debug, Deserialize)]
 struct OnlineResponse {
     online: bool,
-}
-
-/// Parses `max-age=N` from a `Cache-Control` header value.
-/// Returns `None` if the header is absent or unparseable.
-pub fn parse_max_age(header: &str) -> Option<u64> {
-    header.split(',').find_map(|part| {
-        let part = part.trim();
-        let rest = part.strip_prefix("max-age")?;
-        let rest = rest.trim().strip_prefix('=')?;
-        rest.trim().parse::<u64>().ok()
-    })
 }
 
 /// Spawns the online poll background task.
@@ -158,10 +151,7 @@ async fn run_online_poller(state: Arc<AppState>, mut rx: mpsc::Receiver<Vec<i64>
                 Ok(results) => {
                     for (eve_id, ttl_secs) in results {
                         let ttl = ttl_secs.unwrap_or(DEFAULT_CACHE_SECS);
-                        next_poll_at.insert(
-                            eve_id,
-                            Instant::now() + Duration::from_secs(ttl),
-                        );
+                        next_poll_at.insert(eve_id, Instant::now() + Duration::from_secs(ttl));
                     }
                 }
                 Err(e) => error!(error = %e, "online poller client task panicked"),
@@ -183,11 +173,7 @@ async fn run_online_poller(state: Arc<AppState>, mut rx: mpsc::Receiver<Vec<i64>
 
 /// Polls ESI for one character's online status. Returns the Cache-Control
 /// max-age from the response, or None on error (caller uses the default TTL).
-async fn poll_one_online(
-    state: &AppState,
-    character: &Character,
-    _client_id: &str,
-) -> Option<u64> {
+async fn poll_one_online(state: &AppState, character: &Character, _client_id: &str) -> Option<u64> {
     let token = match ensure_token_fresh(
         &state.db,
         &state.http,
@@ -220,7 +206,10 @@ async fn poll_one_online(
         state.config.esi_base, character.eve_character_id
     );
 
-    debug!(eve_character_id = character.eve_character_id, "online poller: polling");
+    debug!(
+        eve_character_id = character.eve_character_id,
+        "online poller: polling"
+    );
 
     let response = match esi::esi_request(|| async {
         state
@@ -272,8 +261,7 @@ async fn poll_one_online(
     // Only write to the DB if the status changed.
     if character.is_online != Some(body.online) {
         if let Err(e) =
-            update_character_online_status(&state.db, character.eve_character_id, body.online)
-                .await
+            update_character_online_status(&state.db, character.eve_character_id, body.online).await
         {
             warn!(
                 error = %e,
@@ -290,34 +278,4 @@ async fn poll_one_online(
     }
 
     cache_secs
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_max_age_standard() {
-        assert_eq!(parse_max_age("public, max-age=60"), Some(60));
-    }
-
-    #[test]
-    fn parse_max_age_only() {
-        assert_eq!(parse_max_age("max-age=30"), Some(30));
-    }
-
-    #[test]
-    fn parse_max_age_missing() {
-        assert_eq!(parse_max_age("no-cache"), None);
-    }
-
-    #[test]
-    fn parse_max_age_with_spaces() {
-        assert_eq!(parse_max_age("public, max-age = 120"), Some(120));
-    }
-
-    #[test]
-    fn parse_max_age_zero() {
-        assert_eq!(parse_max_age("max-age=0"), Some(0));
-    }
 }

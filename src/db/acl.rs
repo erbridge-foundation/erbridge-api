@@ -54,10 +54,7 @@ pub async fn find_acl_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Acl>> {
 
 /// Returns all ACLs where the given account is the owner or holds manage/admin
 /// permission via a direct character member entry.
-pub async fn find_acls_manageable_by_account(
-    pool: &PgPool,
-    account_id: Uuid,
-) -> Result<Vec<Acl>> {
+pub async fn find_acls_manageable_by_account(pool: &PgPool, account_id: Uuid) -> Result<Vec<Acl>> {
     sqlx::query_as!(
         Acl,
         r#"

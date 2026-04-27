@@ -1,20 +1,51 @@
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub enum AuditEvent {
-    AccountRegistered { account_id: Uuid, eve_character_id: i64, character_name: String },
-    AccountDeletionRequested { account_id: Uuid },
-    AccountReactivated { account_id: Uuid },
-    AccountPurged { account_id: Uuid },
-    CharacterAdded { account_id: Uuid, eve_character_id: i64, character_name: String },
-    CharacterRemoved { account_id: Uuid, eve_character_id: i64 },
-    CharacterSetMain { account_id: Uuid, eve_character_id: i64 },
-    GhostCharacterClaimed { account_id: Uuid, eve_character_id: i64, character_name: String },
-    MapCreated { account_id: Uuid, map_id: Uuid, name: String },
-    MapDeleted { account_id: Uuid, map_id: Uuid },
+    AccountRegistered {
+        account_id: Uuid,
+        eve_character_id: i64,
+        character_name: String,
+    },
+    AccountDeletionRequested {
+        account_id: Uuid,
+    },
+    AccountReactivated {
+        account_id: Uuid,
+    },
+    AccountPurged {
+        account_id: Uuid,
+    },
+    CharacterAdded {
+        account_id: Uuid,
+        eve_character_id: i64,
+        character_name: String,
+    },
+    CharacterRemoved {
+        account_id: Uuid,
+        eve_character_id: i64,
+    },
+    CharacterSetMain {
+        account_id: Uuid,
+        eve_character_id: i64,
+    },
+    GhostCharacterClaimed {
+        account_id: Uuid,
+        eve_character_id: i64,
+        character_name: String,
+    },
+    MapCreated {
+        account_id: Uuid,
+        map_id: Uuid,
+        name: String,
+    },
+    MapDeleted {
+        account_id: Uuid,
+        map_id: Uuid,
+    },
 }
 
 impl AuditEvent {
@@ -36,7 +67,11 @@ impl AuditEvent {
     pub fn details(&self) -> Value {
         match self {
             // actor is NULL for registration — account_id not in actor column so include it here.
-            Self::AccountRegistered { account_id, eve_character_id, character_name } => json!({
+            Self::AccountRegistered {
+                account_id,
+                eve_character_id,
+                character_name,
+            } => json!({
                 "account_id": account_id,
                 "eve_character_id": eve_character_id,
                 "character_name": character_name,
@@ -47,19 +82,31 @@ impl AuditEvent {
             Self::AccountPurged { account_id } => json!({ "account_id": account_id }),
             // actor == account_id (self-reactivation) — include for clarity since actor is self.
             Self::AccountReactivated { account_id } => json!({ "account_id": account_id }),
-            Self::CharacterAdded { eve_character_id, character_name, .. } => json!({
+            Self::CharacterAdded {
+                eve_character_id,
+                character_name,
+                ..
+            } => json!({
                 "eve_character_id": eve_character_id,
                 "character_name": character_name,
             }),
-            Self::CharacterRemoved { eve_character_id, .. } => json!({
+            Self::CharacterRemoved {
+                eve_character_id, ..
+            } => json!({
                 "eve_character_id": eve_character_id,
             }),
-            Self::CharacterSetMain { eve_character_id, .. } => json!({
+            Self::CharacterSetMain {
+                eve_character_id, ..
+            } => json!({
                 "eve_character_id": eve_character_id,
             }),
             // actor is NULL for login ghost-claim (no session yet) — include account_id.
             // actor is set for attach ghost-claim — but include for consistency.
-            Self::GhostCharacterClaimed { account_id, eve_character_id, character_name } => json!({
+            Self::GhostCharacterClaimed {
+                account_id,
+                eve_character_id,
+                character_name,
+            } => json!({
                 "account_id": account_id,
                 "eve_character_id": eve_character_id,
                 "character_name": character_name,
@@ -101,7 +148,6 @@ pub async fn record_in_tx(
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -167,7 +213,10 @@ mod tests {
     #[test]
     fn character_removed_serialises_correctly() {
         let id = test_uuid();
-        let event = AuditEvent::CharacterRemoved { account_id: id, eve_character_id: 42 };
+        let event = AuditEvent::CharacterRemoved {
+            account_id: id,
+            eve_character_id: 42,
+        };
         assert_eq!(event.event_type(), "character_removed");
         assert_eq!(event.details()["eve_character_id"], 42i64);
         assert!(event.details().get("account_id").is_none());
@@ -176,7 +225,10 @@ mod tests {
     #[test]
     fn character_set_main_serialises_correctly() {
         let id = test_uuid();
-        let event = AuditEvent::CharacterSetMain { account_id: id, eve_character_id: 99 };
+        let event = AuditEvent::CharacterSetMain {
+            account_id: id,
+            eve_character_id: 99,
+        };
         assert_eq!(event.event_type(), "character_set_main");
         assert_eq!(event.details()["eve_character_id"], 99i64);
         assert!(event.details().get("account_id").is_none());

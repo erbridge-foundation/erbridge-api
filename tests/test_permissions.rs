@@ -63,7 +63,9 @@ async fn owner_always_gets_admin() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "owner-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     tx.commit().await.unwrap();
 
     let perm = effective_permission(&pool, owner_id, map.id).await.unwrap();
@@ -78,10 +80,21 @@ async fn owner_is_not_affected_by_deny_entry() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "owner-deny-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Deny)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Deny,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
@@ -101,7 +114,9 @@ async fn unrelated_account_gets_none() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "no-access-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     tx.commit().await.unwrap();
 
     let perm = effective_permission(&pool, other_id, map.id).await.unwrap();
@@ -112,7 +127,9 @@ async fn unrelated_account_gets_none() {
 async fn nonexistent_map_returns_none() {
     let (_pg, pool) = common::setup_db().await;
     let account_id = make_account(&pool).await;
-    let perm = effective_permission(&pool, account_id, Uuid::new_v4()).await.unwrap();
+    let perm = effective_permission(&pool, account_id, Uuid::new_v4())
+        .await
+        .unwrap();
     assert_eq!(perm, None);
 }
 
@@ -129,14 +146,27 @@ async fn character_member_read_grant() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "char-read-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Read)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, Some(Permission::Read));
 }
 
@@ -149,14 +179,27 @@ async fn character_member_admin_grant() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "char-admin-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Admin)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Admin,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, Some(Permission::Admin));
 }
 
@@ -173,14 +216,27 @@ async fn corporation_member_grant() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "corp-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Corporation, Some(98000001), None, "test", AclPermission::ReadWrite)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Corporation,
+        Some(98000001),
+        None,
+        "test",
+        AclPermission::ReadWrite,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, Some(Permission::ReadWrite));
 }
 
@@ -193,14 +249,27 @@ async fn alliance_member_grant() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "alliance-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Alliance, Some(99000001), None, "test", AclPermission::Read)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Alliance,
+        Some(99000001),
+        None,
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, Some(Permission::Read));
 }
 
@@ -213,14 +282,27 @@ async fn character_without_alliance_does_not_match_alliance_entry() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "no-alliance-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Alliance, Some(99000001), None, "test", AclPermission::Read)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Alliance,
+        Some(99000001),
+        None,
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, None);
 }
 
@@ -237,17 +319,39 @@ async fn deny_overrides_grant_on_same_acl() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "deny-same-acl", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
     // Corp grant + character deny in same ACL.
-    insert_acl_member(&mut tx, acl.id, MemberType::Corporation, Some(98000001), None, "test", AclPermission::Read)
-        .await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Deny)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Corporation,
+        Some(98000001),
+        None,
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Deny,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, None, "deny must override corp grant");
 }
 
@@ -260,18 +364,40 @@ async fn deny_on_one_acl_overrides_grant_on_another() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "deny-cross-acl", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl1 = insert_acl(&mut tx, owner_id, "Grant ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl1.id, MemberType::Corporation, Some(98000001), None, "test", AclPermission::ReadWrite)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl1.id,
+        MemberType::Corporation,
+        Some(98000001),
+        None,
+        "test",
+        AclPermission::ReadWrite,
+    )
+    .await
+    .unwrap();
     let acl2 = insert_acl(&mut tx, owner_id, "Deny ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl2.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Deny)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl2.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Deny,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl1.id).await.unwrap();
     attach_acl(&mut tx, map.id, acl2.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
     assert_eq!(perm, None, "deny on one acl must stop grants from another");
 }
 
@@ -300,16 +426,30 @@ async fn ghost_character_member_does_not_grant_access_to_any_account() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "ghost-member-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(ghost_char_id), "test", AclPermission::Admin)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(ghost_char_id),
+        "test",
+        AclPermission::Admin,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
     // No account should get access via the ghost member entry.
     let perm = effective_permission(&pool, other_id, map.id).await.unwrap();
-    assert_eq!(perm, None, "ghost character member must not grant access to any account");
+    assert_eq!(
+        perm, None,
+        "ghost character member must not grant access to any account"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -325,21 +465,47 @@ async fn most_permissive_grant_wins_across_acls() {
 
     let mut tx = pool.begin().await.unwrap();
     let map = insert_map(&mut tx, owner_id, "Map", "most-perm-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     // ACL 1: corp read
     let acl1 = insert_acl(&mut tx, owner_id, "Corp ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl1.id, MemberType::Corporation, Some(98000001), None, "test", AclPermission::Read)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl1.id,
+        MemberType::Corporation,
+        Some(98000001),
+        None,
+        "test",
+        AclPermission::Read,
+    )
+    .await
+    .unwrap();
     // ACL 2: character manage
     let acl2 = insert_acl(&mut tx, owner_id, "Char ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl2.id, MemberType::Character, None, Some(char_id), "test", AclPermission::Manage)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl2.id,
+        MemberType::Character,
+        None,
+        Some(char_id),
+        "test",
+        AclPermission::Manage,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl1.id).await.unwrap();
     attach_acl(&mut tx, map.id, acl2.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
-    assert_eq!(perm, Some(Permission::Manage), "manage should win over read");
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        perm,
+        Some(Permission::Manage),
+        "manage should win over read"
+    );
 }
 
 #[tokio::test]
@@ -352,7 +518,8 @@ async fn multiple_characters_on_account_all_checked() {
     // Insert main character (no matching ACL entry).
     let mut tx = pool.begin().await.unwrap();
     let _main = insert_character(
-        &mut tx, &aes_key,
+        &mut tx,
+        &aes_key,
         InsertCharacterData {
             account_id: member_id,
             eve_character_id: 6001,
@@ -365,10 +532,13 @@ async fn multiple_characters_on_account_all_checked() {
             refresh_token: "r",
             esi_token_expires_at: Utc::now() + chrono::Duration::hours(1),
         },
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
     // Insert alt character (matching ACL entry).
     let alt = insert_character(
-        &mut tx, &aes_key,
+        &mut tx,
+        &aes_key,
         InsertCharacterData {
             account_id: member_id,
             eve_character_id: 6002,
@@ -381,16 +551,35 @@ async fn multiple_characters_on_account_all_checked() {
             refresh_token: "r",
             esi_token_expires_at: Utc::now() + chrono::Duration::hours(1),
         },
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     let map = insert_map(&mut tx, owner_id, "Map", "multi-char-map", None)
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     let acl = insert_acl(&mut tx, owner_id, "ACL").await.unwrap();
-    insert_acl_member(&mut tx, acl.id, MemberType::Character, None, Some(alt.id), "test", AclPermission::ReadWrite)
-        .await.unwrap();
+    insert_acl_member(
+        &mut tx,
+        acl.id,
+        MemberType::Character,
+        None,
+        Some(alt.id),
+        "test",
+        AclPermission::ReadWrite,
+    )
+    .await
+    .unwrap();
     attach_acl(&mut tx, map.id, acl.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let perm = effective_permission(&pool, member_id, map.id).await.unwrap();
-    assert_eq!(perm, Some(Permission::ReadWrite), "alt character grant should apply to account");
+    let perm = effective_permission(&pool, member_id, map.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        perm,
+        Some(Permission::ReadWrite),
+        "alt character grant should apply to account"
+    );
 }

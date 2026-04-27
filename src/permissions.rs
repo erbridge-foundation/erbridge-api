@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::db::acl_member::AclPermission;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Display, EnumString, IntoStaticStr)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Display, EnumString, IntoStaticStr,
+)]
 #[strum(serialize_all = "snake_case")]
 pub enum Permission {
     Read,
@@ -80,7 +82,10 @@ pub async fn effective_permission(
     }
 
     // Deny is a hard stop — overrides all grants.
-    if rows.iter().any(|r| r.permission == AclPermission::Deny.to_string()) {
+    if rows
+        .iter()
+        .any(|r| r.permission == AclPermission::Deny.to_string())
+    {
         return Ok(None);
     }
 

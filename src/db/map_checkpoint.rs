@@ -46,10 +46,7 @@ pub async fn insert_checkpoint(
     .context("failed to insert map checkpoint")
 }
 
-pub async fn find_latest_checkpoint(
-    pool: &PgPool,
-    map_id: Uuid,
-) -> Result<Option<MapCheckpoint>> {
+pub async fn find_latest_checkpoint(pool: &PgPool, map_id: Uuid) -> Result<Option<MapCheckpoint>> {
     sqlx::query_as!(
         MapCheckpoint,
         r#"
