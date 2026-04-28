@@ -6,7 +6,7 @@ use tracing::{info, warn};
 
 use crate::{
     config::Config,
-    db::character::{Character, update_character_tokens},
+    db::character::{Character, CharacterTokenUpdate, update_character_tokens},
     esi::character::get_character_public_info,
 };
 
@@ -123,12 +123,14 @@ pub async fn ensure_token_fresh(
         pool,
         &config.aes_key,
         character.eve_character_id,
-        public_info.corporation_id,
-        public_info.alliance_id,
-        &esi_client.client_id,
-        &resp.access_token,
-        &resp.refresh_token,
-        new_expires_at,
+        CharacterTokenUpdate {
+            corporation_id: public_info.corporation_id,
+            alliance_id: public_info.alliance_id,
+            esi_client_id: &esi_client.client_id,
+            access_token: &resp.access_token,
+            refresh_token: &resp.refresh_token,
+            esi_token_expires_at: new_expires_at,
+        },
     )
     .await
     .context("failed to persist refreshed ESI tokens")?;

@@ -82,12 +82,14 @@ pub async fn attach_character_to_account(
                     pool,
                     aes_key,
                     input.eve_character_id,
-                    input.corporation_id,
-                    input.alliance_id,
-                    input.esi_client_id,
-                    input.access_token,
-                    input.refresh_token,
-                    input.esi_token_expires_at,
+                    character::CharacterTokenUpdate {
+                        corporation_id: input.corporation_id,
+                        alliance_id: input.alliance_id,
+                        esi_client_id: input.esi_client_id,
+                        access_token: input.access_token,
+                        refresh_token: input.refresh_token,
+                        esi_token_expires_at: input.esi_token_expires_at,
+                    },
                 )
                 .await?;
                 info!(
@@ -230,12 +232,14 @@ pub async fn login_or_register(
                     pool,
                     aes_key,
                     input.eve_character_id,
-                    input.corporation_id,
-                    input.alliance_id,
-                    input.esi_client_id,
-                    input.access_token,
-                    input.refresh_token,
-                    input.esi_token_expires_at,
+                    character::CharacterTokenUpdate {
+                        corporation_id: input.corporation_id,
+                        alliance_id: input.alliance_id,
+                        esi_client_id: input.esi_client_id,
+                        access_token: input.access_token,
+                        refresh_token: input.refresh_token,
+                        esi_token_expires_at: input.esi_token_expires_at,
+                    },
                 )
                 .await?;
                 info!(

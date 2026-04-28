@@ -220,19 +220,30 @@ pub async fn claim_ghost_character(
     decrypt_row(row, aes_key)
 }
 
+pub struct CharacterTokenUpdate<'a> {
+    pub corporation_id: i64,
+    pub alliance_id: Option<i64>,
+    pub esi_client_id: &'a str,
+    pub access_token: &'a str,
+    pub refresh_token: &'a str,
+    pub esi_token_expires_at: DateTime<Utc>,
+}
+
 /// Updates ESI tokens on an existing claimed character row.
-#[allow(clippy::too_many_arguments)]
 pub async fn update_character_tokens(
     pool: &PgPool,
     aes_key: &[u8; 32],
     eve_character_id: i64,
-    corporation_id: i64,
-    alliance_id: Option<i64>,
-    esi_client_id: &str,
-    access_token: &str,
-    refresh_token: &str,
-    esi_token_expires_at: DateTime<Utc>,
+    update: CharacterTokenUpdate<'_>,
 ) -> Result<Character> {
+    let CharacterTokenUpdate {
+        corporation_id,
+        alliance_id,
+        esi_client_id,
+        access_token,
+        refresh_token,
+        esi_token_expires_at,
+    } = update;
     let enc_access = crypto::encrypt(aes_key, access_token.as_bytes())
         .context("failed to encrypt access token")?;
     let enc_refresh = crypto::encrypt(aes_key, refresh_token.as_bytes())
