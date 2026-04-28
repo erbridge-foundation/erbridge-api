@@ -479,8 +479,8 @@ Required ESI scopes: `esi-location.read_location.v1`, `esi-location.read_ship_ty
 
 ## Known Issues and Gaps
 
-### Router / Handler Gaps
-- Admin-role routes (`admin_purge_account`, `admin_restore_account`) are implemented as stubs that always return 403; they are not registered in `lib.rs`.
+### Upcoming Work
+- Admin-role routes (`admin_purge_account`, `admin_restore_account`) are stubs (always return 403, not registered in `lib.rs`); full implementation is planned as part of the `/api/v1/admin` endpoint work.
 
 ### Architectural / Design Issues
 - **ACL permission bypass in `require_acl_permission`:** Only direct character membership is checked. Corporation/alliance ACL membership does not grant ACL management rights — that is intentional per the design (manage/admin are character-only), but the code does not have a comment to that effect.

@@ -29,7 +29,7 @@ strong improvement, **P3** = polish.
 | E. Too-many-arguments refactors | E1 E2 E3 | ✓ all | |
 | F. Error-handling consistency | F1 F2 F3 | ✓ all | |
 | G. Image-proxy subsystem | G1 G2 | ✓ all | |
-| H. Router / handler gaps | H1 H2 | — none | |
+| H. Router / handler gaps | ~~H1~~ H2 | ✓ all | H1 rejected; H2 endpoint deleted |
 | I. ESI & token handling | I1 I2 I3 | — none | |
 | J. Crypto | J1 J2 | — none | |
 | K. Config validation | K1 | ✓ all | |
@@ -306,15 +306,9 @@ docs.
 
 ## H. Router / handler gaps
 
-### H1 [P2] Decide on admin route stubs
-- **Where:** `src/handlers/character.rs:168-190` defines `admin_purge_account` and
-  `admin_restore_account` that always return 403. They are not registered in `lib.rs` and
-  reference an "admin role story" that does not exist.
-- **Fix:** Either (a) delete both stubs and the corresponding `AdminPurge`/`AdminRestore`
-  audit variants until the admin role story exists, or (b) leave them and add a
-  `// TODO(US-admin-roles)` block at the top of `handlers::character` documenting the
-  contract. Recommend (a) — dead code rots faster than it gets revived. CODEBASE.md already
-  documents them as stubs in "Known Issues" so removal is consistent.
+### ~~H1 [P2] Decide on admin route stubs~~ — REJECTED
+
+Decision: keep the stubs. They serve as placeholders for the upcoming admin role story.
 
 ### H2 [P2] Authentication on `/debug/location-subscribe/{character_id}`
 - **Where:** `src/lib.rs:162-168` registers the debug route in the **public** router (no
