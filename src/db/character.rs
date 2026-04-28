@@ -398,35 +398,42 @@ pub enum DeleteCharacterResult {
 
 /// Deletes a non-main character within an existing transaction.
 /// Returns the deleted character's `eve_character_id` on success.
+/// Uses a single atomic DELETE ... WHERE is_main = false to avoid TOCTOU.
 pub async fn delete_character_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     account_id: Uuid,
     character_id: Uuid,
 ) -> Result<(DeleteCharacterResult, Option<i64>)> {
-    let row = sqlx::query!(
-        "SELECT is_main, eve_character_id FROM eve_character WHERE id = $1 AND account_id = $2",
+    let deleted = sqlx::query_scalar!(
+        r#"
+        DELETE FROM eve_character
+        WHERE id = $1 AND account_id = $2 AND is_main = false
+        RETURNING eve_character_id
+        "#,
         character_id,
         account_id,
     )
     .fetch_optional(&mut **tx)
     .await
-    .context("failed to fetch character for deletion")?;
+    .context("failed to delete character")?;
 
-    match row {
+    if let Some(eve_character_id) = deleted {
+        return Ok((DeleteCharacterResult::Deleted, Some(eve_character_id)));
+    }
+
+    // Zero rows deleted — distinguish not-found from is-main.
+    let exists = sqlx::query_scalar!(
+        "SELECT is_main FROM eve_character WHERE id = $1 AND account_id = $2",
+        character_id,
+        account_id,
+    )
+    .fetch_optional(&mut **tx)
+    .await
+    .context("failed to check character existence after failed delete")?;
+
+    match exists {
         None => Ok((DeleteCharacterResult::NotFound, None)),
-        Some(r) if r.is_main => Ok((DeleteCharacterResult::IsMain, None)),
-        Some(r) => {
-            sqlx::query!(
-                "DELETE FROM eve_character WHERE id = $1 AND account_id = $2",
-                character_id,
-                account_id,
-            )
-            .execute(&mut **tx)
-            .await
-            .context("failed to delete character")?;
-
-            Ok((DeleteCharacterResult::Deleted, Some(r.eve_character_id)))
-        }
+        Some(_is_main) => Ok((DeleteCharacterResult::IsMain, None)),
     }
 }
 
