@@ -10,7 +10,7 @@ use crate::db::map::{Map, MapWithAcls};
 use crate::db::map_types::{LifeState, MassState, Side};
 
 static SLUG_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").expect("slug regex must compile"));
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 
