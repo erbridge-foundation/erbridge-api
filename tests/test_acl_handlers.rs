@@ -513,6 +513,39 @@ async fn delete_member_returns_204() {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/v1/acls/:acl_id/members — invalid member_type rejected at 422
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn add_member_invalid_member_type_returns_422() {
+    let (_pg, pool) = common::setup_db().await;
+    let jwt_key = common::test_jwt_key();
+    let account_id = make_account(&pool, 40000003, "Owner").await;
+
+    let session = common::make_session_jwt(account_id, &jwt_key);
+    let mut server = make_server(pool);
+    server.add_cookie(Cookie::new("erbridge_session", session));
+
+    let create_resp: AclEnvelope = server
+        .post("/api/v1/acls")
+        .json(&serde_json::json!({ "name": "ACL" }))
+        .await
+        .json();
+    let acl_id = create_resp.data.id;
+
+    let resp = server
+        .post(&format!("/api/v1/acls/{acl_id}/members"))
+        .json(&serde_json::json!({
+            "member_type": "robot",
+            "eve_entity_id": 98000001,
+            "permission": "read"
+        }))
+        .expect_failure()
+        .await;
+    assert_eq!(resp.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/v1/acls/:acl_id/members — non-member gets 403
 // ---------------------------------------------------------------------------
 

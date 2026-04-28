@@ -1,25 +1,42 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use sqlx::{PgPool, Postgres, Transaction};
 use strum::{Display, EnumString};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Deserialize)]
 #[strum(serialize_all = "snake_case")]
+#[serde(try_from = "String")]
 pub enum MemberType {
     Character,
     Corporation,
     Alliance,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
+impl TryFrom<String> for MemberType {
+    type Error = strum::ParseError;
+    fn try_from(s: String) -> std::result::Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Deserialize)]
 #[strum(serialize_all = "snake_case")]
+#[serde(try_from = "String")]
 pub enum AclPermission {
     Read,
     ReadWrite,
     Manage,
     Admin,
     Deny,
+}
+
+impl TryFrom<String> for AclPermission {
+    type Error = strum::ParseError;
+    fn try_from(s: String) -> std::result::Result<Self, Self::Error> {
+        s.parse()
+    }
 }
 
 #[derive(Debug)]

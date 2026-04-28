@@ -10,7 +10,7 @@ use validator::Validate;
 
 use crate::{
     db::acl::find_acls_manageable_by_account,
-    db::acl_member::{AclPermission, MemberType, find_members_by_acl},
+    db::acl_member::find_members_by_acl,
     dto::acl::{
         AclListResponse, AclMemberListResponse, AclMemberResponse, AclResponse, AddMemberRequest,
         CreateAclRequest, RenameAclRequest, UpdateMemberRequest,
@@ -122,15 +122,6 @@ pub async fn add(
     Path(acl_id): Path<Uuid>,
     Json(body): Json<AddMemberRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<AclMemberResponse>>), AclError> {
-    let member_type = body
-        .member_type
-        .parse::<MemberType>()
-        .map_err(|_| AclError::Validation(format!("invalid member_type: {}", body.member_type)))?;
-    let permission = body
-        .permission
-        .parse::<AclPermission>()
-        .map_err(|_| AclError::Validation(format!("invalid permission: {}", body.permission)))?;
-
     let member = add_member(
         &state.db,
         &state.http,
@@ -138,9 +129,9 @@ pub async fn add(
         acl_id,
         account_id,
         AddMemberInput {
-            member_type,
+            member_type: body.member_type,
             eve_entity_id: body.eve_entity_id,
-            permission,
+            permission: body.permission,
         },
     )
     .await?;
@@ -161,13 +152,8 @@ pub async fn update_member(
     Path((acl_id, member_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<UpdateMemberRequest>,
 ) -> Result<Json<ApiResponse<AclMemberResponse>>, AclError> {
-    let permission = body
-        .permission
-        .parse::<AclPermission>()
-        .map_err(|_| AclError::Validation(format!("invalid permission: {}", body.permission)))?;
-
     let member =
-        update_member_permission(&state.db, acl_id, member_id, account_id, permission).await?;
+        update_member_permission(&state.db, acl_id, member_id, account_id, body.permission).await?;
 
     Ok(Json(ApiResponse::ok(AclMemberResponse::from(member))))
 }

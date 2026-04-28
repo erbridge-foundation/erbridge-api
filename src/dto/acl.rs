@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::db::{acl::Acl, acl_member::AclMember};
+use crate::db::{
+    acl::Acl,
+    acl_member::{AclMember, AclPermission, MemberType},
+};
 
 // ---------------------------------------------------------------------------
 // Responses
@@ -86,12 +89,12 @@ pub type RenameAclRequest = AclNameRequest;
 
 #[derive(Deserialize)]
 pub struct AddMemberRequest {
-    pub member_type: String,
+    pub member_type: MemberType,
     pub eve_entity_id: Option<i64>,
-    pub permission: String,
+    pub permission: AclPermission,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateMemberRequest {
-    pub permission: String,
+    pub permission: AclPermission,
 }
