@@ -16,8 +16,13 @@ use std::sync::Arc;
 
 use axum::{
     Router,
+    http::HeaderName,
     middleware::from_fn_with_state,
     routing::{delete, get, patch, post, put},
+};
+use tower_http::{
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
 use dashmap::DashMap;
 use jsonwebtoken::jwk::JwkSet;
@@ -167,5 +172,15 @@ fn build_router(state: Arc<AppState>) -> Router {
         );
     }
 
-    public.merge(authenticated).with_state(state)
+    let request_id = HeaderName::from_static("x-request-id");
+    public
+        .merge(authenticated)
+        .with_state(state)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
+        )
+        .layer(PropagateRequestIdLayer::new(request_id.clone()))
+        .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
 }
