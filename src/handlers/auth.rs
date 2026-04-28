@@ -39,7 +39,7 @@ const ESI_SCOPES: &str = "esi-location.read_location.v1 \
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or(std::time::Duration::ZERO)
         .as_secs()
 }
 
