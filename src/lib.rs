@@ -157,20 +157,11 @@ fn build_router(state: Arc<AppState>) -> Router {
             middleware::require_active_account,
         ));
 
-    #[cfg_attr(not(debug_assertions), allow(unused_mut))]
-    let mut public = Router::new()
+    let public = Router::new()
         // Health
         .route("/api/health", get(handlers::health::health))
         .route("/auth/login", get(handlers::auth::login))
         .route("/auth/callback", get(handlers::auth::callback));
-
-    #[cfg(debug_assertions)]
-    {
-        public = public.route(
-            "/debug/location-subscribe/{character_id}",
-            get(handlers::debug::location_subscribe),
-        );
-    }
 
     let request_id = HeaderName::from_static("x-request-id");
     public
