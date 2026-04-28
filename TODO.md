@@ -34,7 +34,7 @@ strong improvement, **P3** = polish.
 | J. Crypto | J1 J2 | ✓ all | |
 | K. Config validation | K1 | ✓ all | |
 | L. Observability | L1 L2 L3 | ✓ all | |
-| M. N+1 / soft-delete leakage | M1 M2 M3 M4 | — none | |
+| M. N+1 / soft-delete leakage | M1 M2 M3 M4 | ✓ all | |
 | N. DTO / validation polish | N1 N2 N3 | — none | |
 | O. Misc | O1 O2 O3 | — none | |
 | P. Tests | P1 P2 P3 | — none | |
