@@ -28,7 +28,7 @@ strong improvement, **P3** = polish.
 | D. Missing indexes | D1 D2 D3 D4 D5 | ✓ all | |
 | E. Too-many-arguments refactors | E1 E2 E3 | ✓ all | |
 | F. Error-handling consistency | F1 F2 F3 | ✓ all | |
-| G. Image-proxy subsystem | G1 G2 | — none | |
+| G. Image-proxy subsystem | G1 G2 | ✓ G1 | |
 | H. Router / handler gaps | H1 H2 | — none | |
 | I. ESI & token handling | I1 I2 I3 | — none | |
 | J. Crypto | J1 J2 | — none | |

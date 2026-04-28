@@ -76,7 +76,6 @@ erbridge-api/
     │   ├── auth.rs                 # login, add_character, callback, logout, me
     │   ├── character.rs            # list, remove, set_main, delete_account + admin stubs
     │   ├── health.rs               # GET /api/health
-    │   ├── images.rs               # GET /api/v1/images/{category}/{id}/{variation}
     │   ├── acl.rs                  # Full ACL + member CRUD handlers
     │   ├── map.rs                  # Full map/connection/signature/route handlers
     │   └── debug.rs                # GET /debug/location-subscribe/:character_id (temp)
@@ -85,11 +84,9 @@ erbridge-api/
     │   ├── auth.rs                 # login_or_register, attach_character_to_account
     │   ├── acl.rs                  # ACL + member management with permission checks
     │   ├── map.rs                  # Map management + connection/signature/route operations
-    │   ├── images.rs               # Filesystem image cache (1-hour TTL)
     │   └── sde_solar_system.rs     # SDE download, parse, bulk upsert + update check
     └── tasks/
         ├── mod.rs
-        ├── image_cache_cleanup.rs  # Background task: purge stale cache files every 2h
         ├── character_online_poll.rs # Background task: poll ESI online status per character
         ├── character_location_poll.rs # Background task: poll ESI location, broadcast events
         └── map_checkpoint.rs       # Background task: snapshot map state to JSONB
@@ -108,7 +105,7 @@ erbridge-api/
 7. `esi::discovery::discover()` — fetch EVE SSO OpenID Connect well-known document
 8. `esi::jwks::fetch_jwks()` — load JWK set, store in `Arc<RwLock<JwkSet>>`
 9. Build a minimal `AppState` for pollers (placeholder `online_poll_tx` channel)
-10. Spawn background tasks: image cache cleanup, SDE update check, online poller, location poller, map checkpoint
+10. Spawn background tasks: SDE update check, online poller, location poller, map checkpoint
 11. Build router via `erbridge_api::router()` (gets the real `online_poll_tx` from the online poller), bind `0.0.0.0:8080`
 
 > **Note:** The poller `AppState` uses a throwaway channel for `online_poll_tx`; the router `AppState`
@@ -126,7 +123,6 @@ erbridge-api/
 | GET | `/api/health` | `handlers::health::health` |
 | GET | `/auth/login` | `handlers::auth::login` |
 | GET | `/auth/callback` | `handlers::auth::callback` |
-| GET | `/api/v1/images/{category}/{id}/{variation}` | `handlers::images::image` |
 | GET | `/debug/location-subscribe/{character_id}` | `handlers::debug::location_subscribe` (**debug builds only**) |
 
 ### Authenticated (`require_active_account` middleware applied)
@@ -168,16 +164,6 @@ erbridge-api/
 Success: `{"data": <T>}`
 Error: `{"error": "<message>"}`
 Health: `{"status": "ok"|"degraded", "version": "0.1.0", "components": {"database": "ok"|"degraded"}}`
-
-### Image Proxy
-
-`GET /api/v1/images/{category}/{id}/{variation}?size={u32}&tenant={string}`
-
-Valid combos: `characters/{id}/portrait`, `corporations/{id}/logo`, `alliances/{id}/logo`,
-`types/{id}/render|icon|bp|bpc|relic`. Proxied to `images.evetech.net`. 404 on invalid combo,
-502 on upstream failure. Response: `Cache-Control: public, max-age=3600`.
-
----
 
 ## Authentication
 
@@ -405,7 +391,6 @@ Up to 4 retries on 429. Respects `Retry-After` header; otherwise exponential bac
 - Handlers: map errors to `StatusCode` + `warn!(error = %e, …)` log
 - `services::map`: typed `MapError` enum via `thiserror` (includes `From<sqlx::Error>` for FK violations)
 - `services::acl`: typed `AclError` enum via `thiserror`
-- `services::images`: typed `ImageError` enum via `thiserror`
 
 ### Map Events
 Every mutation to a map appends to `map_events` within the same transaction. Event types include:
@@ -429,7 +414,6 @@ snapshots connections + ends + signatures as JSONB, inserts a `map_checkpoints` 
 | `ESI_CLIENT_ID_N` / `ESI_CLIENT_SECRET_N` | Yes* | — | Multi-client (overrides single) |
 | `ESI_CALLBACK_URL` | No | `{APP_URL}/auth/callback` | OAuth callback |
 | `FRONTEND_URL` | No | `{APP_URL}` | Post-login redirect |
-| `IMAGE_CACHE_DIR` | No | `{TMPDIR}/erbridge-images` | Image cache directory |
 | `ACCOUNT_DELETION_GRACE_DAYS` | No | `30` | Days before hard-deleting pending-delete accounts |
 | `ESI_BASE_URL` | No | `https://esi.evetech.net/latest` | ESI base URL (override for tests) |
 | `ESI_REFRESH_TOKEN_MAX_DAYS` | No | `7` | Refresh token age limit |
@@ -444,7 +428,6 @@ snapshots connections + ends + signatures as JSONB, inserts a `map_checkpoints` 
 
 | Task | Interval | Action |
 |------|----------|--------|
-| Image cache cleanup | Every 2h | Remove cache files older than 1h |
 | SDE update check | 10-min initial delay, then every 24h | Compare CCP build number; re-download + upsert if changed |
 | Online poller | Adaptive (ESI Cache-Control max-age, default 60s) | Poll ESI `/characters/{id}/online/` per character; update `is_online` on change |
 | Location poller | Adaptive (ESI Cache-Control max-age, default 5s) | Poll ESI `/characters/{id}/location/` only for characters with active subscribers; broadcast `LocationEvent` |
@@ -459,7 +442,6 @@ snapshots connections + ends + signatures as JSONB, inserts a `map_checkpoints` 
 |---------|-----|---------|
 | EVE SSO | `https://login.eveonline.com` | OAuth2 + JWK set |
 | ESI | `https://esi.evetech.net/latest` | Character/corp/alliance data, search, online/location polling |
-| EVE Image Server | `https://images.evetech.net` | Character portraits, logos |
 | CCP SDE | `https://developers.eveonline.com/static-data/tranquility/` | Solar system static data |
 
 Required ESI scopes: `esi-location.read_location.v1`, `esi-location.read_ship_type.v1`,
