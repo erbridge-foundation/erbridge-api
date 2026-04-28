@@ -68,28 +68,64 @@ impl Config {
 
         let frontend_url = std::env::var("FRONTEND_URL").unwrap_or(app_url);
 
-        let account_deletion_grace_days = std::env::var("ACCOUNT_DELETION_GRACE_DAYS")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(30);
+        let account_deletion_grace_days = {
+            let raw = std::env::var("ACCOUNT_DELETION_GRACE_DAYS")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(30);
+            if !(1..=365).contains(&raw) {
+                anyhow::bail!(
+                    "ACCOUNT_DELETION_GRACE_DAYS must be between 1 and 365 (got {})",
+                    raw
+                );
+            }
+            raw
+        };
 
         let esi_base = std::env::var("ESI_BASE_URL")
             .unwrap_or_else(|_| "https://esi.evetech.net/latest".to_string());
 
-        let esi_refresh_token_max_days = std::env::var("ESI_REFRESH_TOKEN_MAX_DAYS")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(7);
+        let esi_refresh_token_max_days = {
+            let raw = std::env::var("ESI_REFRESH_TOKEN_MAX_DAYS")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(7);
+            if !(1..=30).contains(&raw) {
+                anyhow::bail!(
+                    "ESI_REFRESH_TOKEN_MAX_DAYS must be between 1 and 30 (got {})",
+                    raw
+                );
+            }
+            raw
+        };
 
-        let esi_poll_concurrency = std::env::var("ESI_POLL_CONCURRENCY")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(10);
+        let esi_poll_concurrency = {
+            let raw = std::env::var("ESI_POLL_CONCURRENCY")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(10);
+            if !(1..=100).contains(&raw) {
+                anyhow::bail!(
+                    "ESI_POLL_CONCURRENCY must be between 1 and 100 (got {})",
+                    raw
+                );
+            }
+            raw
+        };
 
-        let esi_poll_batch_size = std::env::var("ESI_POLL_BATCH_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(10);
+        let esi_poll_batch_size = {
+            let raw = std::env::var("ESI_POLL_BATCH_SIZE")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(10);
+            if !(1..=100).contains(&raw) {
+                anyhow::bail!(
+                    "ESI_POLL_BATCH_SIZE must be between 1 and 100 (got {})",
+                    raw
+                );
+            }
+            raw
+        };
 
         let esi_poll_batch_delay_ms = {
             let raw = std::env::var("ESI_POLL_BATCH_DELAY_MS")
@@ -108,10 +144,19 @@ impl Config {
             }
         };
 
-        let map_checkpoint_interval_mins = std::env::var("MAP_CHECKPOINT_INTERVAL_MINS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(60);
+        let map_checkpoint_interval_mins = {
+            let raw = std::env::var("MAP_CHECKPOINT_INTERVAL_MINS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(60);
+            if !(1..=1440).contains(&raw) {
+                anyhow::bail!(
+                    "MAP_CHECKPOINT_INTERVAL_MINS must be between 1 and 1440 (got {})",
+                    raw
+                );
+            }
+            raw
+        };
 
         let database_max_connections = {
             let raw = std::env::var("DATABASE_MAX_CONNECTIONS")
@@ -329,5 +374,126 @@ mod tests {
         unsafe {
             std::env::remove_var("DATABASE_MAX_CONNECTIONS");
         }
+    }
+
+    fn check_rejects(var: &str, value: &str) {
+        set_required_env_vars();
+        unsafe { std::env::set_var(var, value) }
+        match Config::from_env() {
+            Err(e) => assert!(
+                e.to_string().contains(var),
+                "error message should mention {var}, got: {e}"
+            ),
+            Ok(_) => panic!("expected error for {var}={value}"),
+        }
+        clear_required_env_vars();
+        unsafe { std::env::remove_var(var) }
+    }
+
+    fn check_accepts(var: &str, value: &str, expected: impl Fn(&Config) -> bool) {
+        set_required_env_vars();
+        unsafe { std::env::set_var(var, value) }
+        let config = Config::from_env().expect("should parse");
+        assert!(expected(&config), "unexpected value for {var}={value}");
+        clear_required_env_vars();
+        unsafe { std::env::remove_var(var) }
+    }
+
+    #[test]
+    fn esi_poll_concurrency_rejects_zero() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ESI_POLL_CONCURRENCY", "0");
+    }
+
+    #[test]
+    fn esi_poll_concurrency_rejects_over_100() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ESI_POLL_CONCURRENCY", "101");
+    }
+
+    #[test]
+    fn esi_poll_concurrency_accepts_valid() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_accepts("ESI_POLL_CONCURRENCY", "50", |c| {
+            c.esi_poll_concurrency == 50
+        });
+    }
+
+    #[test]
+    fn esi_poll_batch_size_rejects_zero() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ESI_POLL_BATCH_SIZE", "0");
+    }
+
+    #[test]
+    fn esi_poll_batch_size_rejects_over_100() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ESI_POLL_BATCH_SIZE", "101");
+    }
+
+    #[test]
+    fn esi_poll_batch_size_accepts_valid() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_accepts("ESI_POLL_BATCH_SIZE", "25", |c| c.esi_poll_batch_size == 25);
+    }
+
+    #[test]
+    fn map_checkpoint_interval_mins_rejects_zero() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("MAP_CHECKPOINT_INTERVAL_MINS", "0");
+    }
+
+    #[test]
+    fn map_checkpoint_interval_mins_rejects_over_1440() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("MAP_CHECKPOINT_INTERVAL_MINS", "1441");
+    }
+
+    #[test]
+    fn map_checkpoint_interval_mins_accepts_valid() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_accepts("MAP_CHECKPOINT_INTERVAL_MINS", "30", |c| {
+            c.map_checkpoint_interval_mins == 30
+        });
+    }
+
+    #[test]
+    fn account_deletion_grace_days_rejects_zero() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ACCOUNT_DELETION_GRACE_DAYS", "0");
+    }
+
+    #[test]
+    fn account_deletion_grace_days_rejects_over_365() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ACCOUNT_DELETION_GRACE_DAYS", "366");
+    }
+
+    #[test]
+    fn account_deletion_grace_days_accepts_valid() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_accepts("ACCOUNT_DELETION_GRACE_DAYS", "90", |c| {
+            c.account_deletion_grace_days == 90
+        });
+    }
+
+    #[test]
+    fn esi_refresh_token_max_days_rejects_zero() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ESI_REFRESH_TOKEN_MAX_DAYS", "0");
+    }
+
+    #[test]
+    fn esi_refresh_token_max_days_rejects_over_30() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_rejects("ESI_REFRESH_TOKEN_MAX_DAYS", "31");
+    }
+
+    #[test]
+    fn esi_refresh_token_max_days_accepts_valid() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        check_accepts("ESI_REFRESH_TOKEN_MAX_DAYS", "14", |c| {
+            c.esi_refresh_token_max_days == 14
+        });
     }
 }
