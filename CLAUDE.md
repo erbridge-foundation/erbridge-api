@@ -31,7 +31,6 @@ mutations go to `map_events` instead).
 
 ## Known issues to be aware of
 
-- `handlers::debug::location_subscribe` is debug-only (`#[cfg(debug_assertions)]`) — not present in release builds
 - `AppState::online_poll_tx` is `Option<Sender<...>>` — `None` in the poller state, `Some` in the router state; send sites use `.as_ref().expect(...)`
 - Admin-role routes (`admin_purge_account`, `admin_restore_account`) are stubs (always return 403, not registered in `lib.rs`) — full `/api/v1/admin` endpoint implementation is upcoming work
 

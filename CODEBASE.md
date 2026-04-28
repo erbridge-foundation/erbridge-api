@@ -77,8 +77,7 @@ erbridge-api/
     │   ├── character.rs            # list, remove, set_main, delete_account + admin stubs
     │   ├── health.rs               # GET /api/health
     │   ├── acl.rs                  # Full ACL + member CRUD handlers
-    │   ├── map.rs                  # Full map/connection/signature/route handlers
-    │   └── debug.rs                # GET /debug/location-subscribe/:character_id (temp)
+    │   └── map.rs                  # Full map/connection/signature/route handlers
     ├── services/
     │   ├── mod.rs
     │   ├── auth.rs                 # login_or_register, attach_character_to_account
@@ -123,7 +122,6 @@ erbridge-api/
 | GET | `/api/health` | `handlers::health::health` |
 | GET | `/auth/login` | `handlers::auth::login` |
 | GET | `/auth/callback` | `handlers::auth::callback` |
-| GET | `/debug/location-subscribe/{character_id}` | `handlers::debug::location_subscribe` (**debug builds only**) |
 
 ### Authenticated (`require_active_account` middleware applied)
 
@@ -262,13 +260,13 @@ Indexes on `occurred_at DESC`, `actor_account_id`.
 |--------|------|-------|
 | connection_id | UUID PK | |
 | map_id | UUID FK → map | CASCADE |
-| status | TEXT | `tentative`\|`partial`\|`linked`\|`fully_linked`\|`collapsed`\|`expired` |
+| status | TEXT | `partial`\|`linked`\|`fully_linked`\|`collapsed`\|`expired` |
 | life_state | TEXT | `fresh`\|`eol`\|NULL |
 | mass_state | TEXT | `stable`\|`reduced`\|`critical`\|NULL |
 | extra | JSONB | default `{}` |
 | created_at / updated_at | TIMESTAMPTZ | |
 
-Initial default status is `partial` (not `tentative` — see known issues).
+Initial default status is `partial`.
 
 ### `map_connection_ends`
 | Column | Type | Notes |
@@ -468,7 +466,7 @@ Required ESI scopes: `esi-location.read_location.v1`, `esi-location.read_ship_ty
 | `strum` 0.28 | Enum ↔ string for DB status fields |
 | `zip` 2 | SDE ZIP extraction |
 | `dashmap` 6 | Concurrent map for location subscriptions |
-| `once_cell` 1 | Lazy regex init in dto/map.rs |
+| `std::sync::LazyLock` (stdlib) | Lazy static init (regex, etc.) |
 | `regex` 1 | Slug validation |
 | `validator` 0.20 | Request struct validation (`#[validate]`) |
 | `futures` 0.3 | Async utilities |
