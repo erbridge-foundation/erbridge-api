@@ -168,6 +168,12 @@ pub async fn delete_acl(
 // ACL member management
 // ---------------------------------------------------------------------------
 
+pub struct AddMemberInput {
+    pub member_type: MemberType,
+    pub eve_entity_id: Option<i64>,
+    pub permission: AclPermission,
+}
+
 /// Adds a member to an ACL. Caller must hold `manage` or higher.
 ///
 /// For `character` members, `eve_character_id` must be provided. If the
@@ -180,17 +186,19 @@ pub async fn delete_acl(
 /// - `permission` is invalid
 /// - `manage`/`admin` is used on a non-character member
 /// - the entity is already a member of this ACL
-#[allow(clippy::too_many_arguments)]
 pub async fn add_member(
     pool: &PgPool,
     http: &Client,
     esi_base: &str,
     acl_id: Uuid,
     requesting_account_id: Uuid,
-    member_type: MemberType,
-    eve_entity_id: Option<i64>,
-    permission: AclPermission,
+    input: AddMemberInput,
 ) -> Result<AclMember, AclError> {
+    let AddMemberInput {
+        member_type,
+        eve_entity_id,
+        permission,
+    } = input;
     validate_permission_for_type(permission, member_type)?;
 
     let acl = require_acl(pool, acl_id).await?;

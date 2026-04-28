@@ -19,8 +19,8 @@ use crate::{
     dto::envelope::ApiResponse,
     extractors::AccountId,
     services::acl::{
-        AclError, add_member, assert_acl_list_members_permission, create_acl, delete_acl,
-        remove_member, rename_acl, update_member_permission,
+        AclError, AddMemberInput, add_member, assert_acl_list_members_permission, create_acl,
+        delete_acl, remove_member, rename_acl, update_member_permission,
     },
     state::AppState,
 };
@@ -211,9 +211,11 @@ pub async fn add(
         &state.config.esi_base,
         acl_id,
         account_id,
-        member_type,
-        body.eve_entity_id,
-        permission,
+        AddMemberInput {
+            member_type,
+            eve_entity_id: body.eve_entity_id,
+            permission,
+        },
     )
     .await
     .map_err(|e| {

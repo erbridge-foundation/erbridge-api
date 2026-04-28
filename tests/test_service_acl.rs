@@ -4,7 +4,8 @@ use chrono::Utc;
 use erbridge_api::{
     db::acl_member::{AclPermission, MemberType, find_members_by_acl},
     services::acl::{
-        add_member, create_acl, delete_acl, remove_member, rename_acl, update_member_permission,
+        AddMemberInput, add_member, create_acl, delete_acl, remove_member, rename_acl,
+        update_member_permission,
     },
     services::auth::{LoginInput, login_or_register},
 };
@@ -180,9 +181,11 @@ async fn add_member_manage_on_corporation_fails() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Manage,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Manage,
+        },
     )
     .await;
 
@@ -210,9 +213,11 @@ async fn add_member_requires_manage_permission() {
         "http://unused",
         acl.id,
         outsider_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await;
 
@@ -242,9 +247,11 @@ async fn add_corporation_member_succeeds() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -267,9 +274,11 @@ async fn add_alliance_member_succeeds() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Alliance,
-        Some(99000001),
-        AclPermission::Deny,
+        AddMemberInput {
+            member_type: MemberType::Alliance,
+            eve_entity_id: Some(99000001),
+            permission: AclPermission::Deny,
+        },
     )
     .await
     .unwrap();
@@ -295,9 +304,11 @@ async fn duplicate_corporation_member_fails() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -308,9 +319,11 @@ async fn duplicate_corporation_member_fails() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::ReadWrite,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::ReadWrite,
+        },
     )
     .await;
 
@@ -339,9 +352,11 @@ async fn add_character_member_creates_ghost_and_returns_member() {
         &esi.uri(),
         acl.id,
         account_id,
-        MemberType::Character,
-        Some(20000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Character,
+            eve_entity_id: Some(20000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -378,9 +393,11 @@ async fn add_character_member_reuses_existing_character_row() {
         "http://unused",
         acl.id,
         owner_id,
-        MemberType::Character,
-        Some(char_eve_id),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Character,
+            eve_entity_id: Some(char_eve_id),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -419,9 +436,11 @@ async fn duplicate_character_member_fails() {
         &esi.uri(),
         acl.id,
         account_id,
-        MemberType::Character,
-        Some(20000002),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Character,
+            eve_entity_id: Some(20000002),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -432,9 +451,11 @@ async fn duplicate_character_member_fails() {
         &esi.uri(),
         acl.id,
         account_id,
-        MemberType::Character,
-        Some(20000002),
-        AclPermission::ReadWrite,
+        AddMemberInput {
+            member_type: MemberType::Character,
+            eve_entity_id: Some(20000002),
+            permission: AclPermission::ReadWrite,
+        },
     )
     .await;
 
@@ -459,9 +480,11 @@ async fn update_member_permission_succeeds() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -492,9 +515,11 @@ async fn update_member_permission_manage_on_corp_fails() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -525,9 +550,11 @@ async fn update_member_permission_wrong_acl_fails() {
         "http://unused",
         acl_a.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -568,9 +595,11 @@ async fn remove_member_succeeds() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -597,9 +626,11 @@ async fn remove_member_wrong_acl_fails() {
         "http://unused",
         acl_a.id,
         account_id,
-        MemberType::Corporation,
-        Some(98000001),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000001),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -635,9 +666,11 @@ async fn character_with_manage_permission_can_add_members() {
         "http://unused",
         acl.id,
         owner_id,
-        MemberType::Character,
-        Some(manager_eve_id),
-        AclPermission::Manage,
+        AddMemberInput {
+            member_type: MemberType::Character,
+            eve_entity_id: Some(manager_eve_id),
+            permission: AclPermission::Manage,
+        },
     )
     .await
     .unwrap();
@@ -649,9 +682,11 @@ async fn character_with_manage_permission_can_add_members() {
         "http://unused",
         acl.id,
         manager_id,
-        MemberType::Corporation,
-        Some(98000099),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98000099),
+            permission: AclPermission::Read,
+        },
     )
     .await;
 
@@ -728,9 +763,11 @@ async fn add_member_records_audit_row() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98111111),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98111111),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -751,9 +788,11 @@ async fn update_member_permission_records_audit_row() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98111112),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98111112),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
@@ -785,9 +824,11 @@ async fn remove_member_records_audit_row() {
         "http://unused",
         acl.id,
         account_id,
-        MemberType::Corporation,
-        Some(98111113),
-        AclPermission::Read,
+        AddMemberInput {
+            member_type: MemberType::Corporation,
+            eve_entity_id: Some(98111113),
+            permission: AclPermission::Read,
+        },
     )
     .await
     .unwrap();
