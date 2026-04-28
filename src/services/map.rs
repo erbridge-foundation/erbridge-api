@@ -1,8 +1,11 @@
 use anyhow::Context;
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use serde_json::json;
 use sqlx::PgPool;
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audit::{self, AuditEvent};
@@ -15,6 +18,7 @@ use crate::db::{
     acl, connection as db_conn, map as db_map, map_acl, map_event, route as db_route,
     signature as db_sig,
 };
+use crate::dto::envelope::ApiResponse;
 use crate::permissions::{Permission, effective_permission};
 
 #[derive(Debug, Error)]
@@ -37,6 +41,8 @@ pub enum MapError {
     ConnectionMapMismatch,
     #[error("signature does not belong to this map")]
     SignatureMapMismatch,
+    #[error("{0}")]
+    Validation(String),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -50,6 +56,27 @@ impl From<sqlx::Error> for MapError {
             return MapError::SystemNotFound;
         }
         MapError::Internal(anyhow::Error::from(e))
+    }
+}
+
+impl IntoResponse for MapError {
+    fn into_response(self) -> Response {
+        let status = match &self {
+            MapError::NotFound => StatusCode::NOT_FOUND,
+            MapError::Forbidden | MapError::AclOwnerMismatch => StatusCode::FORBIDDEN,
+            MapError::SlugConflict
+            | MapError::SelfLoop
+            | MapError::SystemNotFound
+            | MapError::SignatureAlreadyLinked
+            | MapError::ConnectionMapMismatch
+            | MapError::SignatureMapMismatch
+            | MapError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            MapError::Internal(_) => {
+                warn!(error = %self, "internal map error");
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        };
+        (status, Json(ApiResponse::<()>::error(self.to_string()))).into_response()
     }
 }
 

@@ -1,8 +1,11 @@
 use anyhow::Context;
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use reqwest::Client;
 use sqlx::PgPool;
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -11,6 +14,7 @@ use crate::{
         acl::{self, Acl},
         acl_member::{self, AclMember, AclPermission, MemberType},
     },
+    dto::envelope::ApiResponse,
     esi::{character::get_character_public_info, universe::resolve_names},
     permissions::Permission,
 };
@@ -27,8 +31,27 @@ pub enum AclError {
     MemberAclMismatch,
     #[error("permission '{0}' is only valid for character members")]
     InvalidPermissionForType(String),
+    #[error("{0}")]
+    Validation(String),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
+}
+
+impl IntoResponse for AclError {
+    fn into_response(self) -> Response {
+        let status = match &self {
+            AclError::NotFound | AclError::MemberAclMismatch => StatusCode::NOT_FOUND,
+            AclError::Forbidden => StatusCode::FORBIDDEN,
+            AclError::DuplicateMember
+            | AclError::InvalidPermissionForType(_)
+            | AclError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            AclError::Internal(_) => {
+                warn!(error = %self, "internal acl error");
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        };
+        (status, Json(ApiResponse::<()>::error(self.to_string()))).into_response()
+    }
 }
 
 /// Returns `Err` if `manage` or `admin` is used on a non-character member type.

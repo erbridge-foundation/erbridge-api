@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use tracing::warn;
 use uuid::Uuid;
 
 use validator::Validate;
@@ -32,25 +31,6 @@ use crate::{
     },
     state::AppState,
 };
-
-fn map_err(e: MapError) -> (StatusCode, Json<ApiResponse<()>>) {
-    let status = match &e {
-        MapError::NotFound => StatusCode::NOT_FOUND,
-        MapError::Forbidden => StatusCode::FORBIDDEN,
-        MapError::SlugConflict => StatusCode::UNPROCESSABLE_ENTITY,
-        MapError::AclOwnerMismatch => StatusCode::FORBIDDEN,
-        MapError::SelfLoop
-        | MapError::SystemNotFound
-        | MapError::SignatureAlreadyLinked
-        | MapError::ConnectionMapMismatch
-        | MapError::SignatureMapMismatch => StatusCode::UNPROCESSABLE_ENTITY,
-        MapError::Internal(_) => {
-            warn!(error = %e, "internal map error");
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-    };
-    (status, Json(ApiResponse::error(e.to_string())))
-}
 
 fn connection_to_response(c: Connection) -> ConnectionResponse {
     ConnectionResponse {
@@ -101,11 +81,8 @@ fn signature_to_response(s: Signature) -> SignatureResponse {
 pub async fn list_maps_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
-) -> Result<Json<ApiResponse<MapListResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
-    let maps = list_maps(&state.db, account_id).await.map_err(|e| {
-        warn!(error = %e, %account_id, "failed to list maps");
-        map_err(e)
-    })?;
+) -> Result<Json<ApiResponse<MapListResponse>>, MapError> {
+    let maps = list_maps(&state.db, account_id).await?;
 
     Ok(Json(ApiResponse::ok(MapListResponse {
         maps: maps.into_iter().map(MapResponse::from).collect(),
@@ -120,13 +97,9 @@ pub async fn create_map_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Json(body): Json<CreateMapRequest>,
-) -> Result<(StatusCode, Json<ApiResponse<MapResponse>>), (StatusCode, Json<ApiResponse<()>>)> {
-    body.validate().map_err(|e| {
-        (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ApiResponse::error(e.to_string())),
-        )
-    })?;
+) -> Result<(StatusCode, Json<ApiResponse<MapResponse>>), MapError> {
+    body.validate()
+        .map_err(|e| MapError::Validation(e.to_string()))?;
 
     let map = create_map(
         &state.db,
@@ -136,11 +109,7 @@ pub async fn create_map_handler(
         body.description.as_deref(),
         body.acl_id,
     )
-    .await
-    .map_err(|e| {
-        warn!(error = %e, %account_id, "failed to create map");
-        map_err(e)
-    })?;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -157,13 +126,9 @@ pub async fn update_map_handler(
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
     Json(body): Json<UpdateMapRequest>,
-) -> Result<Json<ApiResponse<MapResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
-    body.validate().map_err(|e| {
-        (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ApiResponse::error(e.to_string())),
-        )
-    })?;
+) -> Result<Json<ApiResponse<MapResponse>>, MapError> {
+    body.validate()
+        .map_err(|e| MapError::Validation(e.to_string()))?;
 
     let map = update_map(
         &state.db,
@@ -173,11 +138,7 @@ pub async fn update_map_handler(
         &body.slug,
         body.description.as_deref(),
     )
-    .await
-    .map_err(|e| {
-        warn!(error = %e, %map_id, %account_id, "failed to update map");
-        map_err(e)
-    })?;
+    .await?;
 
     Ok(Json(ApiResponse::ok(MapResponse::from(map))))
 }
@@ -190,14 +151,8 @@ pub async fn delete_map_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
-) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
-    delete_map(&state.db, map_id, account_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %map_id, %account_id, "failed to delete map");
-            map_err(e)
-        })?;
-
+) -> Result<StatusCode, MapError> {
+    delete_map(&state.db, map_id, account_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -210,14 +165,8 @@ pub async fn attach_acl(
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
     Json(body): Json<AttachAclRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
-    attach_acl_to_map(&state.db, map_id, body.acl_id, account_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %map_id, %account_id, "failed to attach acl to map");
-            map_err(e)
-        })?;
-
+) -> Result<StatusCode, MapError> {
+    attach_acl_to_map(&state.db, map_id, body.acl_id, account_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -230,14 +179,9 @@ pub async fn detach_acl(
     AccountId(account_id): AccountId,
     Path((map_id, acl_id)): Path<(Uuid, Uuid)>,
 ) -> impl IntoResponse {
-    match detach_acl_from_map(&state.db, map_id, acl_id, account_id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => {
-            warn!(error = %e, %map_id, %acl_id, %account_id, "failed to detach acl from map");
-            let (status, body) = map_err(e);
-            (status, body).into_response()
-        }
-    }
+    detach_acl_from_map(&state.db, map_id, acl_id, account_id)
+        .await
+        .map(|()| StatusCode::NO_CONTENT)
 }
 
 // ---------------------------------------------------------------------------
@@ -249,10 +193,7 @@ pub async fn create_connection(
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
     Json(body): Json<CreateConnectionRequest>,
-) -> Result<
-    (StatusCode, Json<ApiResponse<CreateConnectionResponse>>),
-    (StatusCode, Json<ApiResponse<()>>),
-> {
+) -> Result<(StatusCode, Json<ApiResponse<CreateConnectionResponse>>), MapError> {
     let (conn, end_a, end_b) = crate::services::map::create_connection(
         &state.db,
         account_id,
@@ -262,8 +203,7 @@ pub async fn create_connection(
             system_b_id: body.system_b_id,
         },
     )
-    .await
-    .map_err(map_err)?;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -284,8 +224,7 @@ pub async fn add_signature(
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
     Json(body): Json<AddSignatureRequest>,
-) -> Result<(StatusCode, Json<ApiResponse<SignatureResponse>>), (StatusCode, Json<ApiResponse<()>>)>
-{
+) -> Result<(StatusCode, Json<ApiResponse<SignatureResponse>>), MapError> {
     let sig = crate::services::map::add_signature(
         &state.db,
         account_id,
@@ -296,8 +235,7 @@ pub async fn add_signature(
             sig_type: body.sig_type,
         },
     )
-    .await
-    .map_err(map_err)?;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -314,7 +252,7 @@ pub async fn link_signature(
     AccountId(account_id): AccountId,
     Path((map_id, conn_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<LinkSignatureRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<StatusCode, MapError> {
     crate::services::map::link_signature(
         &state.db,
         account_id,
@@ -323,8 +261,7 @@ pub async fn link_signature(
         body.signature_id,
         body.side,
     )
-    .await
-    .map_err(map_err)?;
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -338,7 +275,7 @@ pub async fn update_connection_metadata(
     AccountId(account_id): AccountId,
     Path((map_id, conn_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<UpdateConnectionMetadataRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<StatusCode, MapError> {
     crate::services::map::update_connection_metadata(
         &state.db,
         account_id,
@@ -349,8 +286,7 @@ pub async fn update_connection_metadata(
             mass_state: body.mass_state,
         },
     )
-    .await
-    .map_err(map_err)?;
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -364,7 +300,7 @@ pub async fn find_routes(
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
     Query(params): Query<RouteQueryParams>,
-) -> Result<Json<ApiResponse<RouteListResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<Json<ApiResponse<RouteListResponse>>, MapError> {
     let routes = crate::services::map::find_routes(
         &state.db,
         account_id,
@@ -376,8 +312,7 @@ pub async fn find_routes(
             exclude_mass_critical: params.exclude_mass_critical.unwrap_or(false),
         },
     )
-    .await
-    .map_err(map_err)?;
+    .await?;
 
     Ok(Json(ApiResponse::ok(RouteListResponse {
         routes: routes
@@ -400,12 +335,8 @@ pub async fn get_map_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Path(map_id): Path<Uuid>,
-) -> Result<Json<ApiResponse<MapResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
-    let map = get_map(&state.db, account_id, map_id).await.map_err(|e| {
-        warn!(error = %e, %map_id, %account_id, "failed to get map");
-        map_err(e)
-    })?;
-
+) -> Result<Json<ApiResponse<MapResponse>>, MapError> {
+    let map = get_map(&state.db, account_id, map_id).await?;
     Ok(Json(ApiResponse::ok(MapResponse::from(map))))
 }
 
@@ -417,14 +348,8 @@ pub async fn delete_connection_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Path((map_id, conn_id)): Path<(Uuid, Uuid)>,
-) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
-    delete_connection(&state.db, account_id, map_id, conn_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %map_id, %conn_id, %account_id, "failed to delete connection");
-            map_err(e)
-        })?;
-
+) -> Result<StatusCode, MapError> {
+    delete_connection(&state.db, account_id, map_id, conn_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -436,13 +361,7 @@ pub async fn delete_signature_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
     Path((map_id, sig_id)): Path<(Uuid, Uuid)>,
-) -> Result<StatusCode, (StatusCode, Json<ApiResponse<()>>)> {
-    delete_signature(&state.db, account_id, map_id, sig_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %map_id, %sig_id, %account_id, "failed to delete signature");
-            map_err(e)
-        })?;
-
+) -> Result<StatusCode, MapError> {
+    delete_signature(&state.db, account_id, map_id, sig_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
