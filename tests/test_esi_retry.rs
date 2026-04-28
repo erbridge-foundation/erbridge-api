@@ -27,7 +27,7 @@ async fn retries_5xx_and_succeeds() {
         || {
             let client = client.clone();
             let url = url.clone();
-            async move { Ok(client.get(&url).send().await?) }
+            async move { client.get(&url).send().await }
         },
         1, // 1ms backoff so the test runs fast
     )
@@ -55,7 +55,7 @@ async fn fails_after_max_5xx_retries() {
         || {
             let client = client.clone();
             let url = url.clone();
-            async move { Ok(client.get(&url).send().await?) }
+            async move { client.get(&url).send().await }
         },
         1,
     )

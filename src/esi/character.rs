@@ -18,15 +18,11 @@ pub async fn get_character_public_info(
 ) -> Result<CharacterPublicInfo> {
     let url = format!("{esi_base}/characters/{character_id}/");
 
-    esi_request(|| async {
-        http.get(&url)
-            .send()
-            .await
-            .context("failed to call ESI /characters/{id}/")
-    })
-    .await
-    .context("ESI /characters/{id}/ failed after retries")?
-    .json::<CharacterPublicInfo>()
-    .await
-    .context("failed to parse ESI character public info")
+    esi_request(|| async { http.get(&url).send().await })
+        .await
+        .map_err(|e| anyhow::anyhow!(e))
+        .context("ESI /characters/{id}/ failed after retries")?
+        .json::<CharacterPublicInfo>()
+        .await
+        .context("failed to parse ESI character public info")
 }

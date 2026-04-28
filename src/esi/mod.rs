@@ -9,8 +9,8 @@ pub mod universe;
 use std::future::Future;
 use std::time::Duration;
 
-use anyhow::{Result, bail};
 use reqwest::Response;
+use thiserror::Error;
 use tokio::time::sleep;
 use tracing::warn;
 
@@ -19,6 +19,18 @@ const MAX_RETRIES_5XX: u32 = 3;
 const BASE_BACKOFF_MS: u64 = 500;
 const MAX_BACKOFF_MS: u64 = 30_000;
 
+#[derive(Debug, Error)]
+pub enum EsiError {
+    #[error("ESI rate limited; backed off after {MAX_RETRIES_429} retries")]
+    RateLimited,
+    #[error("ESI server error {status} after {MAX_RETRIES_5XX} retries")]
+    ServerError { status: u16 },
+    #[error("ESI returned HTTP {status}")]
+    Http { status: u16 },
+    #[error("ESI network error: {0}")]
+    Network(#[from] reqwest::Error),
+}
+
 /// Executes an ESI request with automatic 429 and 5xx retry handling.
 ///
 /// `make_request` is called on each attempt — it must rebuild the request from
@@ -26,11 +38,11 @@ const MAX_BACKOFF_MS: u64 = 30_000;
 /// On 429 the function waits for the `Retry-After` duration if present,
 /// otherwise uses exponential backoff with jitter, then retries. On 5xx the
 /// function retries up to MAX_RETRIES_5XX times with exponential backoff.
-/// All other non-2xx responses are returned as errors immediately.
-pub async fn esi_request<F, Fut>(make_request: F) -> Result<Response>
+/// All other non-2xx responses are returned as `EsiError::Http` immediately.
+pub async fn esi_request<F, Fut>(make_request: F) -> Result<Response, EsiError>
 where
     F: Fn() -> Fut,
-    Fut: Future<Output = Result<Response>>,
+    Fut: Future<Output = Result<Response, reqwest::Error>>,
 {
     esi_request_with_backoff(make_request, BASE_BACKOFF_MS).await
 }
@@ -38,10 +50,10 @@ where
 pub async fn esi_request_with_backoff<F, Fut>(
     make_request: F,
     base_backoff_ms: u64,
-) -> Result<Response>
+) -> Result<Response, EsiError>
 where
     F: Fn() -> Fut,
-    Fut: Future<Output = Result<Response>>,
+    Fut: Future<Output = Result<Response, reqwest::Error>>,
 {
     let mut attempts_429 = 0u32;
     let mut attempts_5xx = 0u32;
@@ -55,7 +67,7 @@ where
             attempts_429 += 1;
             total_attempt += 1;
             if attempts_429 > MAX_RETRIES_429 {
-                bail!("ESI rate limit exceeded after {MAX_RETRIES_429} retries");
+                return Err(EsiError::RateLimited);
             }
 
             let wait_ms = retry_after_ms(&response)
@@ -71,10 +83,9 @@ where
             attempts_5xx += 1;
             total_attempt += 1;
             if attempts_5xx > MAX_RETRIES_5XX {
-                bail!(
-                    "ESI server error {} after {MAX_RETRIES_5XX} retries",
-                    status.as_u16()
-                );
+                return Err(EsiError::ServerError {
+                    status: status.as_u16(),
+                });
             }
 
             let wait_ms = exponential_backoff_ms(total_attempt, base_backoff_ms);
@@ -87,8 +98,12 @@ where
             );
 
             sleep(Duration::from_millis(wait_ms)).await;
+        } else if status.is_success() {
+            return Ok(response);
         } else {
-            return Ok(response.error_for_status()?);
+            return Err(EsiError::Http {
+                status: status.as_u16(),
+            });
         }
     }
 }

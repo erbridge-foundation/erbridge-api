@@ -23,16 +23,11 @@ pub async fn resolve_names(
 
     let url = format!("{esi_base}/universe/names/");
 
-    esi_request(|| async {
-        http.post(&url)
-            .json(&ids)
-            .send()
-            .await
-            .context("failed to call ESI /universe/names/")
-    })
-    .await
-    .context("ESI /universe/names/ failed after retries")?
-    .json::<Vec<ResolvedName>>()
-    .await
-    .context("failed to parse ESI /universe/names/ response")
+    esi_request(|| async { http.post(&url).json(&ids).send().await })
+        .await
+        .map_err(|e| anyhow::anyhow!(e))
+        .context("ESI /universe/names/ failed after retries")?
+        .json::<Vec<ResolvedName>>()
+        .await
+        .context("failed to parse ESI /universe/names/ response")
 }

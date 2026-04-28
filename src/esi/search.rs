@@ -131,13 +131,10 @@ pub async fn search(
             .get(&url_str)
             .bearer_auth(access_token)
             .header("X-Compatibility-Date", "2025-12-16");
-        async move {
-            req.send()
-                .await
-                .context("failed to call ESI /characters/{id}/search/")
-        }
+        async move { req.send().await }
     })
     .await
+    .map_err(|e| anyhow::anyhow!(e))
     .context("ESI search failed after retries")?
     .json::<EsiSearchResponse>()
     .await

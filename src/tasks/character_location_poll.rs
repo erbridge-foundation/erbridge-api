@@ -239,27 +239,20 @@ async fn poll_one_location(state: &AppState, character: &Character) -> Option<u6
         "location poller: polling"
     );
 
-    let response = match esi::esi_request(|| async {
-        state
-            .http
-            .get(&url)
-            .bearer_auth(&token)
-            .send()
+    let response =
+        match esi::esi_request(|| async { state.http.get(&url).bearer_auth(&token).send().await })
             .await
-            .map_err(anyhow::Error::from)
-    })
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            warn!(
-                error = %e,
-                eve_character_id = character.eve_character_id,
-                "location poller: ESI request failed"
-            );
-            return None;
-        }
-    };
+        {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    eve_character_id = character.eve_character_id,
+                    "location poller: ESI request failed"
+                );
+                return None;
+            }
+        };
 
     let cache_secs = response
         .headers()
