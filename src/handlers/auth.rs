@@ -128,7 +128,9 @@ pub async fn callback(
     axum::extract::Query(query): axum::extract::Query<CallbackQuery>,
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), Response> {
-    let err = |msg: &'static str| -> Response { (StatusCode::BAD_REQUEST, msg).into_response() };
+    let err = |status: StatusCode, msg: &'static str| -> Response {
+        (status, Json(ApiResponse::<()>::error(msg))).into_response()
+    };
 
     // --- Verify state JWT ---
     let mut state_validation = Validation::new(Algorithm::HS256);
@@ -139,7 +141,7 @@ pub async fn callback(
         &DecodingKey::from_secret(&state.config.jwt_key),
         &state_validation,
     )
-    .map_err(|_| err("invalid state"))?;
+    .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid state"))?;
 
     let state_claims = state_data.claims;
     let client_id = &state_claims.client_id;
@@ -149,7 +151,7 @@ pub async fn callback(
         .esi_clients
         .iter()
         .find(|c| &c.client_id == client_id)
-        .ok_or_else(|| err("invalid state"))?;
+        .ok_or_else(|| err(StatusCode::BAD_REQUEST, "invalid state"))?;
 
     // --- Exchange code for tokens ---
     let token_resp = state
@@ -165,18 +167,18 @@ pub async fn callback(
         .await
         .map_err(|e| {
             warn!(error = %e, "token exchange request failed");
-            (StatusCode::BAD_GATEWAY, "token exchange failed").into_response()
+            err(StatusCode::BAD_GATEWAY, "token exchange failed")
         })?
         .error_for_status()
         .map_err(|e| {
             warn!(error = %e, "token endpoint returned error");
-            (StatusCode::BAD_GATEWAY, "token exchange failed").into_response()
+            err(StatusCode::BAD_GATEWAY, "token exchange failed")
         })?
         .json::<TokenResponse>()
         .await
         .map_err(|e| {
             warn!(error = %e, "failed to parse token response");
-            (StatusCode::BAD_GATEWAY, "token exchange failed").into_response()
+            err(StatusCode::BAD_GATEWAY, "token exchange failed")
         })?;
 
     // --- Verify EVE access token JWT (with JWKS rotation retry — ADR-030) ---
@@ -195,12 +197,12 @@ pub async fn callback(
                     .await
                     .map_err(|e| {
                         warn!(error = %e, "JWKS re-fetch failed");
-                        err("invalid EVE token")
+                        err(StatusCode::BAD_GATEWAY, "invalid EVE token")
                     })?;
                 let result =
                     verify_eve_jwt(&token_resp.access_token, &fresh, client_id).map_err(|e| {
                         warn!(error = %e, "EVE JWT verification failed after JWKS re-fetch");
-                        err("invalid EVE token")
+                        err(StatusCode::BAD_REQUEST, "invalid EVE token")
                     })?;
                 *state.jwks.write().await = fresh;
                 result
@@ -211,7 +213,7 @@ pub async fn callback(
     let eve_claims = eve_token_data.claims;
     let eve_character_id = parse_character_id(&eve_claims.sub).map_err(|e| {
         warn!(error = %e, "failed to parse EVE character ID from sub claim");
-        err("invalid EVE token")
+        err(StatusCode::BAD_REQUEST, "invalid EVE token")
     })?;
 
     // --- Fetch corp/alliance from ESI ---
@@ -220,7 +222,7 @@ pub async fn callback(
             .await
             .map_err(|e| {
                 warn!(error = %e, eve_character_id, "ESI character info fetch failed");
-                (StatusCode::BAD_GATEWAY, "ESI request failed").into_response()
+                err(StatusCode::BAD_GATEWAY, "ESI request failed")
             })?;
 
     let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
@@ -230,7 +232,7 @@ pub async fn callback(
             // --- Attach character to existing account ---
             let account_id = state_claims.account_id.ok_or_else(|| {
                 warn!("add mode state JWT missing account_id");
-                err("invalid state")
+                err(StatusCode::BAD_REQUEST, "invalid state")
             })?;
 
             attach_character_to_account(
@@ -253,11 +255,10 @@ pub async fn callback(
                 warn!(error = %e, "attach_character_to_account failed");
                 match e {
                     AuthError::CharacterOwnerMismatch => {
-                        (StatusCode::CONFLICT, "character belongs to another account")
-                            .into_response()
+                        err(StatusCode::CONFLICT, "character belongs to another account")
                     }
                     AuthError::Internal(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
                     }
                 }
             })?;
@@ -268,7 +269,7 @@ pub async fn callback(
             info!(account_id = %account_id, eve_character_id, "character added to account");
             let cookie = make_session_cookie(account_id, &state.config.jwt_key).map_err(|e| {
                 warn!(error = %e, "failed to encode session JWT");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
             })?;
             Ok((jar.add(cookie), Redirect::to(&redirect_url)))
         }
@@ -294,11 +295,10 @@ pub async fn callback(
                 warn!(error = %e, "login_or_register failed");
                 match e {
                     AuthError::CharacterOwnerMismatch => {
-                        (StatusCode::CONFLICT, "character belongs to another account")
-                            .into_response()
+                        err(StatusCode::CONFLICT, "character belongs to another account")
                     }
                     AuthError::Internal(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
                     }
                 }
             })?;
@@ -309,7 +309,7 @@ pub async fn callback(
             info!(account_id = %account_id, "session cookie issued");
             let cookie = make_session_cookie(account_id, &state.config.jwt_key).map_err(|e| {
                 warn!(error = %e, "failed to encode session JWT");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
             })?;
             Ok((jar.add(cookie), Redirect::to(&redirect_url)))
         }
