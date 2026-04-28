@@ -18,6 +18,29 @@ strong improvement, **P3** = polish.
 
 ---
 
+## Progress tracker
+
+| Section | Items | Done | Notes |
+|---------|-------|------|-------|
+| A. Audit log gaps | A1 A2 A3 A4 A5 ~~A6~~ | ✓ all | A6 rejected |
+| B. Connection pool & background tasks | B1 B2 B3 | ✓ all | |
+| C. Missing CHECK constraints | C1 C2 C3 | ✓ all | |
+| D. Missing indexes | D1 D2 D3 D4 D5 | ✓ all | |
+| E. Too-many-arguments refactors | E1 E2 E3 | ✓ all | |
+| F. Error-handling consistency | F1 F2 F3 | ✓ all | |
+| G. Image-proxy subsystem | G1 G2 | — none | |
+| H. Router / handler gaps | H1 H2 | — none | |
+| I. ESI & token handling | I1 I2 I3 | — none | |
+| J. Crypto | J1 J2 | — none | |
+| K. Config validation | K1 | ✓ all | |
+| L. Observability | L1 L2 L3 | ✓ all | |
+| M. N+1 / soft-delete leakage | M1 M2 M3 M4 | — none | |
+| N. DTO / validation polish | N1 N2 N3 | — none | |
+| O. Misc | O1 O2 O3 | — none | |
+| P. Tests | P1 P2 P3 | — none | |
+
+---
+
 ## A. Audit log gaps (correctness) ✓ DONE
 
 The `AuditEvent` enum in `src/audit.rs` defines variants that are **never instantiated** in
