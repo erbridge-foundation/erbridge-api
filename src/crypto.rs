@@ -4,6 +4,7 @@ use aes_gcm::{
 };
 use anyhow::{Result, anyhow};
 use rand::Rng as _;
+use subtle::ConstantTimeEq as _;
 
 /// Encrypts `plaintext` with AES-256-GCM using `key`.
 ///
@@ -41,6 +42,14 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>> {
     cipher
         .decrypt(nonce, ciphertext)
         .map_err(|e| anyhow!("decryption failed: {e}"))
+}
+
+/// Compares two byte slices in constant time.
+///
+/// Use this wherever secret bytes must be compared. Never use `==` on token
+/// or key bytes — timing side-channels can leak secret values.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.ct_eq(b).into()
 }
 
 #[cfg(test)]
@@ -99,5 +108,30 @@ mod tests {
         let ct = encrypt(&key, b"").unwrap();
         let pt = decrypt(&key, &ct).unwrap();
         assert_eq!(pt, b"");
+    }
+
+    #[test]
+    fn constant_time_eq_equal_slices() {
+        assert!(constant_time_eq(b"token123", b"token123"));
+    }
+
+    #[test]
+    fn constant_time_eq_different_slices() {
+        assert!(!constant_time_eq(b"token123", b"token456"));
+    }
+
+    #[test]
+    fn constant_time_eq_different_lengths() {
+        assert!(!constant_time_eq(b"short", b"longer_value"));
+    }
+
+    #[test]
+    fn constant_time_eq_empty_slices() {
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn constant_time_eq_one_empty() {
+        assert!(!constant_time_eq(b"", b"x"));
     }
 }

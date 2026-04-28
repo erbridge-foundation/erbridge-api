@@ -870,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "erbridge-api"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -894,6 +894,7 @@ dependencies = [
  "sha2 0.11.0",
  "sqlx",
  "strum",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",

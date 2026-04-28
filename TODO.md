@@ -31,7 +31,7 @@ strong improvement, **P3** = polish.
 | G. Image-proxy subsystem | G1 G2 | ✓ all | |
 | H. Router / handler gaps | ~~H1~~ H2 | ✓ all | H1 rejected; H2 endpoint deleted |
 | I. ESI & token handling | I1 I2 I3 | ✓ all | |
-| J. Crypto | J1 J2 | — none | |
+| J. Crypto | J1 J2 | ✓ all | |
 | K. Config validation | K1 | ✓ all | |
 | L. Observability | L1 L2 L3 | ✓ all | |
 | M. N+1 / soft-delete leakage | M1 M2 M3 M4 | — none | |
