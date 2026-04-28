@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Response};
 use serde_json::json;
 use sqlx::PgPool;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 use crate::audit::{self, AuditEvent};
@@ -80,12 +80,14 @@ impl IntoResponse for MapError {
     }
 }
 
+#[derive(Debug)]
 pub struct CreateConnectionInput {
     pub map_id: Uuid,
     pub system_a_id: i64,
     pub system_b_id: i64,
 }
 
+#[derive(Debug)]
 pub struct AddSignatureInput {
     pub map_id: Uuid,
     pub system_id: i64,
@@ -93,12 +95,14 @@ pub struct AddSignatureInput {
     pub sig_type: String,
 }
 
+#[derive(Debug)]
 pub struct UpdateConnectionMetadataInput {
     pub connection_id: Uuid,
     pub life_state: Option<LifeState>,
     pub mass_state: Option<MassState>,
 }
 
+#[derive(Debug)]
 pub struct RouteQuery {
     pub map_id: Uuid,
     pub start_system_id: i64,
@@ -131,6 +135,7 @@ impl From<RouteRow> for Route {
 
 /// Returns all maps visible to the account, each annotated with only the ACLs
 /// the account can manage (owner or manage/admin member).
+#[instrument(skip(pool), err)]
 pub async fn list_maps(pool: &PgPool, account_id: Uuid) -> Result<Vec<MapWithAcls>, MapError> {
     let maps = db_map::find_maps_for_account(pool, account_id).await?;
     if maps.is_empty() {
@@ -163,6 +168,7 @@ pub async fn list_maps(pool: &PgPool, account_id: Uuid) -> Result<Vec<MapWithAcl
         .collect())
 }
 
+#[instrument(skip(pool), err)]
 pub async fn get_map(pool: &PgPool, account_id: Uuid, map_id: Uuid) -> Result<Map, MapError> {
     let map = db_map::find_map_by_id(pool, map_id)
         .await
@@ -180,6 +186,7 @@ pub async fn get_map(pool: &PgPool, account_id: Uuid, map_id: Uuid) -> Result<Ma
 ///
 /// If `acl_id` is provided the map is immediately attached to that ACL and
 /// the ACL's `pending_delete_at` is cleared. The caller must own the ACL.
+#[instrument(skip(pool), err)]
 pub async fn create_map(
     pool: &PgPool,
     owner_account_id: Uuid,
@@ -252,6 +259,7 @@ pub async fn create_map(
 
 /// Updates a map's name, slug, and description.
 /// Caller must hold `manage` or higher.
+#[instrument(skip(pool), err)]
 pub async fn update_map(
     pool: &PgPool,
     map_id: Uuid,
@@ -270,6 +278,7 @@ pub async fn update_map(
 }
 
 /// Soft-deletes a map. Caller must hold `admin` or be the owner.
+#[instrument(skip(pool), err)]
 pub async fn delete_map(
     pool: &PgPool,
     map_id: Uuid,
@@ -320,6 +329,7 @@ pub async fn delete_map(
 // ---------------------------------------------------------------------------
 
 /// Attaches an ACL to a map. Caller must hold `admin` or be the map owner.
+#[instrument(skip(pool), err)]
 pub async fn attach_acl_to_map(
     pool: &PgPool,
     map_id: Uuid,
@@ -366,6 +376,7 @@ pub async fn attach_acl_to_map(
 }
 
 /// Detaches an ACL from a map. Caller must hold `admin` or be the map owner.
+#[instrument(skip(pool), err)]
 pub async fn detach_acl_from_map(
     pool: &PgPool,
     map_id: Uuid,
@@ -408,6 +419,7 @@ pub async fn detach_acl_from_map(
 // Connection / signature / route operations
 // ---------------------------------------------------------------------------
 
+#[instrument(skip(pool), err)]
 pub async fn create_connection(
     pool: &PgPool,
     account_id: Uuid,
@@ -456,6 +468,7 @@ pub async fn create_connection(
     Ok((conn, end_a, end_b))
 }
 
+#[instrument(skip(pool), err)]
 pub async fn add_signature(
     pool: &PgPool,
     account_id: Uuid,
@@ -506,6 +519,7 @@ pub async fn add_signature(
     Ok(sig)
 }
 
+#[instrument(skip(pool), err)]
 pub async fn link_signature(
     pool: &PgPool,
     account_id: Uuid,
@@ -566,6 +580,7 @@ pub async fn link_signature(
     Ok(())
 }
 
+#[instrument(skip(pool), err)]
 pub async fn update_connection_metadata(
     pool: &PgPool,
     account_id: Uuid,
@@ -621,6 +636,7 @@ pub async fn update_connection_metadata(
 }
 
 /// Soft-deletes a connection (sets status to `collapsed`). Caller must hold `ReadWrite` or higher.
+#[instrument(skip(pool), err)]
 pub async fn delete_connection(
     pool: &PgPool,
     account_id: Uuid,
@@ -668,6 +684,7 @@ pub async fn delete_connection(
 }
 
 /// Soft-deletes a signature (sets status to `deleted`). Caller must hold `ReadWrite` or higher.
+#[instrument(skip(pool), err)]
 pub async fn delete_signature(
     pool: &PgPool,
     account_id: Uuid,
@@ -714,6 +731,7 @@ pub async fn delete_signature(
     Ok(())
 }
 
+#[instrument(skip(pool), err)]
 pub async fn find_routes(
     pool: &PgPool,
     account_id: Uuid,

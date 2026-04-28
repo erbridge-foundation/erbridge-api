@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Response};
 use reqwest::Client;
 use sqlx::PgPool;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -73,6 +73,7 @@ fn validate_permission_for_type(
 
 /// Creates a new ACL owned by `owner_account_id`. The ACL is immediately
 /// orphaned (pending_delete_at set) until attached to a map (ADR-028).
+#[instrument(skip(pool), err)]
 pub async fn create_acl(
     pool: &PgPool,
     owner_account_id: Uuid,
@@ -108,6 +109,7 @@ pub async fn create_acl(
 }
 
 /// Renames an ACL. Caller must hold `admin` permission or be the owner.
+#[instrument(skip(pool), err)]
 pub async fn rename_acl(
     pool: &PgPool,
     acl_id: Uuid,
@@ -149,6 +151,7 @@ pub async fn rename_acl(
 }
 
 /// Deletes an ACL. Caller must hold `admin` permission or be the owner.
+#[instrument(skip(pool), err)]
 pub async fn delete_acl(
     pool: &PgPool,
     acl_id: Uuid,
@@ -191,6 +194,7 @@ pub async fn delete_acl(
 // ACL member management
 // ---------------------------------------------------------------------------
 
+#[derive(Debug)]
 pub struct AddMemberInput {
     pub member_type: MemberType,
     pub eve_entity_id: Option<i64>,
@@ -209,6 +213,7 @@ pub struct AddMemberInput {
 /// - `permission` is invalid
 /// - `manage`/`admin` is used on a non-character member
 /// - the entity is already a member of this ACL
+#[instrument(skip(pool, http), err)]
 pub async fn add_member(
     pool: &PgPool,
     http: &Client,
@@ -299,6 +304,7 @@ pub async fn add_member(
 ///
 /// Returns `Err` if the caller lacks permission, the member doesn't belong to
 /// this ACL, or the new permission violates type constraints.
+#[instrument(skip(pool), err)]
 pub async fn update_member_permission(
     pool: &PgPool,
     acl_id: Uuid,
@@ -348,6 +354,7 @@ pub async fn update_member_permission(
 }
 
 /// Removes a member from an ACL. Caller must hold `manage` or higher.
+#[instrument(skip(pool), err)]
 pub async fn remove_member(
     pool: &PgPool,
     acl_id: Uuid,
@@ -395,6 +402,7 @@ pub async fn remove_member(
 
 /// Asserts that `account_id` holds `manage` or higher on the given ACL.
 /// Used by the `list_members` handler.
+#[instrument(skip(pool), err)]
 pub async fn assert_acl_list_members_permission(
     pool: &PgPool,
     acl_id: Uuid,

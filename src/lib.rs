@@ -20,15 +20,15 @@ use axum::{
     middleware::from_fn_with_state,
     routing::{delete, get, patch, post, put},
 };
-use tower_http::{
-    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
-};
 use dashmap::DashMap;
 use jsonwebtoken::jwk::JwkSet;
 use reqwest::Client;
 use sqlx::PgPool;
 use tokio::sync::{RwLock, broadcast, mpsc};
+use tower_http::{
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+};
 
 use crate::{
     config::Config, esi::discovery::EsiMetadata, state::AppState,
