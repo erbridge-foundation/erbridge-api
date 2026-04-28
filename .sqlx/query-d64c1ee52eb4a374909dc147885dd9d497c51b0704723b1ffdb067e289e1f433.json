@@ -1,12 +1,12 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT is_main FROM eve_character WHERE id = $1 AND account_id = $2",
+  "query": "SELECT eve_character_id FROM eve_character WHERE id = $1 AND account_id = $2",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "is_main",
-        "type_info": "Bool"
+        "name": "eve_character_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -19,5 +19,5 @@
       false
     ]
   },
-  "hash": "0800846ca1ebffd5cb566bf91c2a7ff7a2e2d62dc5f587b11ef08ac26fd5e010"
+  "hash": "d64c1ee52eb4a374909dc147885dd9d497c51b0704723b1ffdb067e289e1f433"
 }

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT is_main, eve_character_id FROM eve_character WHERE id = $1 AND account_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_main",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "eve_character_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "0251278522eea0e364cb4ea66a0b5c8b4bf1e78794cc5938315bc1c07293da86"
+}
