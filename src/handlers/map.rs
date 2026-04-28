@@ -307,9 +307,9 @@ pub async fn find_routes(
         RouteQuery {
             map_id,
             start_system_id: params.start_system_id,
-            max_depth: params.max_depth.unwrap_or(10),
-            exclude_eol: params.exclude_eol.unwrap_or(false),
-            exclude_mass_critical: params.exclude_mass_critical.unwrap_or(false),
+            max_depth: params.max_depth,
+            exclude_eol: params.exclude_eol,
+            exclude_mass_critical: params.exclude_mass_critical,
         },
     )
     .await?;

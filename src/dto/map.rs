@@ -178,12 +178,19 @@ pub struct UpdateConnectionMetadataRequest {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+fn default_max_depth() -> i32 {
+    10
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RouteQueryParams {
     pub start_system_id: i64,
-    pub max_depth: Option<i32>,
-    pub exclude_eol: Option<bool>,
-    pub exclude_mass_critical: Option<bool>,
+    #[serde(default = "default_max_depth")]
+    pub max_depth: i32,
+    #[serde(default)]
+    pub exclude_eol: bool,
+    #[serde(default)]
+    pub exclude_mass_critical: bool,
 }
 
 #[derive(Debug, Serialize)]
