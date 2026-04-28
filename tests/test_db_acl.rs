@@ -12,7 +12,8 @@ use erbridge_api::db::{
         insert_acl_member, update_member_permission,
     },
     character::{InsertCharacterData, insert_character},
-    map_acl::attach_acl,
+    map::insert_map,
+    map_acl::{attach_acl, detach_acl},
 };
 use uuid::Uuid;
 
@@ -490,4 +491,125 @@ async fn attaching_acl_to_map_clears_pending_delete() {
 
     let found = find_acl_by_id(&pool, acl.id).await.unwrap().unwrap();
     assert!(found.pending_delete_at.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency: ACL orphan lifecycle (ADR-028)
+//
+// The COUNT/UPDATE in detach_acl is racy under concurrent operations. These
+// tests confirm that the final state is always self-consistent even when two
+// transactions race. The acceptable outcomes are documented per scenario below.
+// ---------------------------------------------------------------------------
+
+async fn make_map(pool: &sqlx::PgPool, account_id: Uuid, slug: &str) -> Uuid {
+    let mut tx = pool.begin().await.unwrap();
+    let map = insert_map(&mut tx, account_id, "Test Map", slug, None)
+        .await
+        .unwrap()
+        .unwrap();
+    tx.commit().await.unwrap();
+    map.id
+}
+
+/// Concurrent detach from two maps: both see `remaining == 0` at the same time.
+/// Both transactions race to set `pending_delete_at`. Final state: ACL is
+/// orphaned (pending_delete_at IS NOT NULL). No deadlock or error must occur.
+#[tokio::test]
+async fn concurrent_detach_both_orphan_acl() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool).await;
+
+    let mut tx = pool.begin().await.unwrap();
+    let acl = insert_acl(&mut tx, account_id, "Shared ACL").await.unwrap();
+    tx.commit().await.unwrap();
+
+    let map_a = make_map(&pool, account_id, "map-concurrent-a").await;
+    let map_b = make_map(&pool, account_id, "map-concurrent-b").await;
+
+    // Attach ACL to both maps.
+    let mut tx = pool.begin().await.unwrap();
+    attach_acl(&mut tx, map_a, acl.id).await.unwrap();
+    attach_acl(&mut tx, map_b, acl.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    // Detach from both maps concurrently.
+    let pool_a = pool.clone();
+    let pool_b = pool.clone();
+    let acl_id = acl.id;
+
+    let (r_a, r_b) = tokio::join!(
+        async move {
+            let mut tx = pool_a.begin().await.unwrap();
+            let r = detach_acl(&mut tx, map_a, acl_id).await;
+            tx.commit().await.unwrap();
+            r
+        },
+        async move {
+            let mut tx = pool_b.begin().await.unwrap();
+            let r = detach_acl(&mut tx, map_b, acl_id).await;
+            tx.commit().await.unwrap();
+            r
+        },
+    );
+
+    r_a.unwrap();
+    r_b.unwrap();
+
+    // ACL has no remaining map attachments — it must be marked for deletion.
+    let found = find_acl_by_id(&pool, acl.id).await.unwrap().unwrap();
+    assert!(
+        found.pending_delete_at.is_some(),
+        "ACL must be orphaned after both maps detach"
+    );
+}
+
+/// Concurrent detach from one map + attach to a second map.
+/// The attach always clears `pending_delete_at` unconditionally, so regardless
+/// of commit order the ACL is non-orphaned after both transactions commit.
+#[tokio::test]
+async fn concurrent_detach_and_attach_leaves_acl_non_orphaned() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool).await;
+
+    let mut tx = pool.begin().await.unwrap();
+    let acl = insert_acl(&mut tx, account_id, "Race ACL").await.unwrap();
+    tx.commit().await.unwrap();
+
+    let map_a = make_map(&pool, account_id, "map-race-a").await;
+    let map_b = make_map(&pool, account_id, "map-race-b").await;
+
+    // Attach ACL to map_a only.
+    let mut tx = pool.begin().await.unwrap();
+    attach_acl(&mut tx, map_a, acl.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let pool_detach = pool.clone();
+    let pool_attach = pool.clone();
+    let acl_id = acl.id;
+
+    let (r_detach, r_attach) = tokio::join!(
+        async move {
+            let mut tx = pool_detach.begin().await.unwrap();
+            let r = detach_acl(&mut tx, map_a, acl_id).await;
+            tx.commit().await.unwrap();
+            r
+        },
+        async move {
+            let mut tx = pool_attach.begin().await.unwrap();
+            let r = attach_acl(&mut tx, map_b, acl_id).await;
+            tx.commit().await.unwrap();
+            r
+        },
+    );
+
+    r_detach.unwrap();
+    r_attach.unwrap();
+
+    // The attach unconditionally clears pending_delete_at, so regardless of
+    // which transaction committed last, the ACL must end up non-orphaned.
+    let found = find_acl_by_id(&pool, acl.id).await.unwrap().unwrap();
+    assert!(
+        found.pending_delete_at.is_none(),
+        "ACL must not be orphaned when an attach races with the detach"
+    );
 }
