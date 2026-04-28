@@ -62,12 +62,25 @@ async fn test_registration_writes_audit_entry() {
         .unwrap();
 
     let rows = fetch_audit(&pool).await;
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].event_type, "account_registered");
-    assert_eq!(rows[0].actor_account_id, None);
-    assert_eq!(rows[0].details["account_id"], account_id.to_string());
-    assert_eq!(rows[0].details["eve_character_id"], 11111i64);
-    assert_eq!(rows[0].details["character_name"], "Tester Alpha");
+    let reg = rows
+        .iter()
+        .find(|r| r.event_type == "account_registered")
+        .expect("account_registered entry missing");
+    assert_eq!(reg.actor_account_id, None);
+    assert_eq!(reg.details["account_id"], account_id.to_string());
+    assert_eq!(reg.details["eve_character_id"], 11111i64);
+    assert_eq!(reg.details["character_name"], "Tester Alpha");
+    // No unexpected event types (server_admin_granted is expected for the first account).
+    for row in &rows {
+        assert!(
+            matches!(
+                row.event_type.as_str(),
+                "account_registered" | "server_admin_granted"
+            ),
+            "unexpected audit event: {}",
+            row.event_type
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -95,13 +108,17 @@ async fn test_ghost_claim_login_writes_audit_entry() {
         .unwrap();
 
     let rows = fetch_audit(&pool).await;
-    // account_registered + ghost_character_claimed
-    assert_eq!(rows.len(), 2);
+    // Expect account_registered + ghost_character_claimed (+ server_admin_granted for first account).
+    assert!(
+        rows.len() >= 2,
+        "expected at least 2 audit rows, got {}",
+        rows.len()
+    );
 
     let registered = rows
         .iter()
         .find(|r| r.event_type == "account_registered")
-        .unwrap();
+        .expect("account_registered entry missing");
     assert_eq!(registered.actor_account_id, None);
     assert_eq!(registered.details["account_id"], account_id.to_string());
     assert_eq!(registered.details["eve_character_id"], 22222i64);
@@ -110,11 +127,23 @@ async fn test_ghost_claim_login_writes_audit_entry() {
     let claimed = rows
         .iter()
         .find(|r| r.event_type == "ghost_character_claimed")
-        .unwrap();
+        .expect("ghost_character_claimed entry missing");
     assert_eq!(claimed.actor_account_id, None);
     assert_eq!(claimed.details["account_id"], account_id.to_string());
     assert_eq!(claimed.details["eve_character_id"], 22222i64);
     assert_eq!(claimed.details["character_name"], "Ghost Pilot");
+
+    // No unexpected event types.
+    for row in &rows {
+        assert!(
+            matches!(
+                row.event_type.as_str(),
+                "account_registered" | "ghost_character_claimed" | "server_admin_granted"
+            ),
+            "unexpected audit event: {}",
+            row.event_type
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -80,6 +80,19 @@ fn build_router(state: Arc<AppState>) -> Router {
             "/api/v1/characters/{character_id}/main",
             put(handlers::character::set_main),
         )
+        // API key management
+        .route(
+            "/api/v1/account/api-keys",
+            post(handlers::account::create_api_key),
+        )
+        .route(
+            "/api/v1/account/api-keys",
+            get(handlers::account::list_api_keys_handler),
+        )
+        .route(
+            "/api/v1/account/api-keys/{key_id}",
+            delete(handlers::account::revoke_api_key),
+        )
         // Auth endpoints that require an authenticated account
         .route("/auth/characters/add", get(handlers::auth::add_character))
         .route("/auth/logout", post(handlers::auth::logout))
@@ -157,6 +170,75 @@ fn build_router(state: Arc<AppState>) -> Router {
             middleware::require_active_account,
         ));
 
+    let admin = Router::new()
+        // Map admin
+        .route("/api/v1/admin/maps", get(handlers::admin::list_maps))
+        .route(
+            "/api/v1/admin/maps/{map_id}/owner",
+            patch(handlers::admin::change_map_owner),
+        )
+        .route(
+            "/api/v1/admin/maps/{map_id}",
+            delete(handlers::admin::hard_delete_map),
+        )
+        // ACL admin
+        .route("/api/v1/admin/acls", get(handlers::admin::list_acls))
+        .route(
+            "/api/v1/admin/acls/{acl_id}/owner",
+            patch(handlers::admin::change_acl_owner),
+        )
+        .route(
+            "/api/v1/admin/acls/{acl_id}",
+            delete(handlers::admin::hard_delete_acl),
+        )
+        // Blocked-character admin
+        .route(
+            "/api/v1/admin/characters/blocked",
+            get(handlers::admin::list_blocked_characters),
+        )
+        .route(
+            "/api/v1/admin/characters/{eve_character_id}/block",
+            post(handlers::admin::block_character),
+        )
+        .route(
+            "/api/v1/admin/characters/{eve_character_id}/unblock",
+            post(handlers::admin::unblock_character),
+        )
+        // Account admin
+        .route(
+            "/api/v1/admin/accounts",
+            get(handlers::admin::list_accounts),
+        )
+        .route(
+            "/api/v1/admin/accounts/{account_id}/grant-admin",
+            post(handlers::admin::grant_admin),
+        )
+        .route(
+            "/api/v1/admin/accounts/{account_id}/revoke-admin",
+            post(handlers::admin::revoke_admin),
+        )
+        .route(
+            "/api/v1/admin/accounts/{account_id}/purge",
+            delete(handlers::admin::purge_account),
+        )
+        .route(
+            "/api/v1/admin/accounts/{account_id}/restore",
+            post(handlers::admin::restore_account),
+        )
+        // Audit log
+        .route(
+            "/api/v1/admin/audit-log",
+            get(handlers::admin::list_audit_log),
+        )
+        .layer(from_fn_with_state(
+            Arc::clone(&state),
+            middleware::require_server_admin,
+        ))
+        .layer(from_fn_with_state(
+            Arc::clone(&state),
+            middleware::require_active_account,
+        ));
+
     let public = Router::new()
         // Health
         .route("/api/health", get(handlers::health::health))
@@ -166,6 +248,7 @@ fn build_router(state: Arc<AppState>) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
     public
         .merge(authenticated)
+        .merge(admin)
         .with_state(state)
         .layer(
             TraceLayer::new_for_http()

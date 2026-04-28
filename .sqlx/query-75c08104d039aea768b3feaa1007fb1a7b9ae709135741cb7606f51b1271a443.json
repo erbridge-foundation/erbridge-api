@@ -1,0 +1,49 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, occurred_at, actor_account_id, event_type, details\n        FROM audit_log\n        WHERE ($1::TEXT IS NULL        OR event_type       = $1)\n          AND ($2::UUID IS NULL        OR actor_account_id = $2)\n          AND ($3::TIMESTAMPTZ IS NULL OR occurred_at      < $3)\n        ORDER BY occurred_at DESC\n        LIMIT $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "occurred_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "actor_account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "event_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "details",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "75c08104d039aea768b3feaa1007fb1a7b9ae709135741cb7606f51b1271a443"
+}

@@ -4,7 +4,7 @@ use thiserror::Error;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::audit::{self, AuditEvent};
+use crate::audit::{self, AuditEvent, ServerAdminGrantSource};
 use crate::db::{account, character};
 
 #[derive(Debug, Error)]
@@ -220,10 +220,22 @@ pub async fn login_or_register(
                     },
                 )
                 .await?;
+                if acc.is_server_admin {
+                    audit::record_in_tx(
+                        &mut tx,
+                        None,
+                        AuditEvent::ServerAdminGranted {
+                            account_id: acc.id,
+                            source: ServerAdminGrantSource::FirstAccountBootstrap,
+                        },
+                    )
+                    .await?;
+                }
                 tx.commit().await?;
                 info!(
                     eve_character_id = input.eve_character_id,
                     account_id = %acc.id,
+                    is_server_admin = acc.is_server_admin,
                     "ghost character claimed on first login"
                 );
                 return Ok(acc.id);
@@ -296,6 +308,17 @@ pub async fn login_or_register(
         },
     )
     .await?;
+    if acc.is_server_admin {
+        audit::record_in_tx(
+            &mut tx,
+            None,
+            AuditEvent::ServerAdminGranted {
+                account_id: acc.id,
+                source: ServerAdminGrantSource::FirstAccountBootstrap,
+            },
+        )
+        .await?;
+    }
 
     tx.commit().await?;
 
@@ -303,6 +326,7 @@ pub async fn login_or_register(
         eve_character_id = input.eve_character_id,
         account_id = %acc.id,
         character_id = %ch.id,
+        is_server_admin = acc.is_server_admin,
         "new account and character created"
     );
 

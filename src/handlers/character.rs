@@ -158,31 +158,3 @@ pub async fn delete_account(
 
     Ok((jar, body))
 }
-
-// ---------------------------------------------------------------------------
-// DELETE /api/v1/admin/accounts/:id/purge  (placeholder — requires admin role)
-// ---------------------------------------------------------------------------
-
-pub async fn admin_purge_account(
-    State(state): State<Arc<AppState>>,
-    AccountId(_account_id): AccountId,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode, StatusCode> {
-    // TODO(US-admin-roles): gate on admin role once that story lands.
-    let _ = (&state, id);
-    Err(StatusCode::FORBIDDEN)
-}
-
-// ---------------------------------------------------------------------------
-// POST /api/v1/admin/accounts/:id/restore  (placeholder — requires admin role)
-// ---------------------------------------------------------------------------
-
-pub async fn admin_restore_account(
-    State(state): State<Arc<AppState>>,
-    AccountId(_account_id): AccountId,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode, StatusCode> {
-    // TODO(US-admin-roles): gate on admin role once that story lands.
-    let _ = (&state, id);
-    Err(StatusCode::FORBIDDEN)
-}

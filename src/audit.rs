@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
-use sqlx::{Postgres, Transaction};
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -91,6 +92,62 @@ pub enum AuditEvent {
         map_id: Uuid,
         acl_id: Uuid,
     },
+    ApiKeyCreated {
+        account_id: Uuid,
+        key_id: Uuid,
+        name: String,
+    },
+    ApiKeyRevoked {
+        account_id: Uuid,
+        key_id: Uuid,
+    },
+    ServerAdminGranted {
+        account_id: Uuid,
+        source: ServerAdminGrantSource,
+    },
+    ServerAdminRevoked {
+        account_id: Uuid,
+    },
+    AdminMapOwnershipChanged {
+        map_id: Uuid,
+        old_owner: Uuid,
+        new_owner: Uuid,
+    },
+    AdminMapHardDeleted {
+        map_id: Uuid,
+        name: String,
+    },
+    AdminAclOwnershipChanged {
+        acl_id: Uuid,
+        old_owner: Uuid,
+        new_owner: Uuid,
+    },
+    AdminAclHardDeleted {
+        acl_id: Uuid,
+        name: String,
+    },
+    EveCharacterBlocked {
+        eve_character_id: i64,
+        reason: Option<String>,
+    },
+    EveCharacterUnblocked {
+        eve_character_id: i64,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ServerAdminGrantSource {
+    FirstAccountBootstrap,
+    AdminGrant,
+}
+
+impl ServerAdminGrantSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FirstAccountBootstrap => "first_account_bootstrap",
+            Self::AdminGrant => "admin_grant",
+        }
+    }
 }
 
 impl AuditEvent {
@@ -114,6 +171,16 @@ impl AuditEvent {
             Self::AclMemberRemoved { .. } => "acl_member_removed",
             Self::AclAttachedToMap { .. } => "acl_attached_to_map",
             Self::AclDetachedFromMap { .. } => "acl_detached_from_map",
+            Self::ApiKeyCreated { .. } => "api_key_created",
+            Self::ApiKeyRevoked { .. } => "api_key_revoked",
+            Self::ServerAdminGranted { .. } => "server_admin_granted",
+            Self::ServerAdminRevoked { .. } => "server_admin_revoked",
+            Self::AdminMapOwnershipChanged { .. } => "admin_map_ownership_changed",
+            Self::AdminMapHardDeleted { .. } => "admin_map_hard_deleted",
+            Self::AdminAclOwnershipChanged { .. } => "admin_acl_ownership_changed",
+            Self::AdminAclHardDeleted { .. } => "admin_acl_hard_deleted",
+            Self::EveCharacterBlocked { .. } => "eve_character_blocked",
+            Self::EveCharacterUnblocked { .. } => "eve_character_unblocked",
         }
     }
 
@@ -228,8 +295,115 @@ impl AuditEvent {
                 "map_id": map_id,
                 "acl_id": acl_id,
             }),
+            // actor carries account_id; include key_id and name for context.
+            Self::ApiKeyCreated { key_id, name, .. } => json!({
+                "key_id": key_id,
+                "name": name,
+            }),
+            // actor carries account_id; include key_id so the event is queryable.
+            Self::ApiKeyRevoked { key_id, .. } => json!({
+                "key_id": key_id,
+            }),
+            // actor is NULL for first-account bootstrap, set for admin_grant —
+            // include account_id so it's not lost in the bootstrap case.
+            Self::ServerAdminGranted { account_id, source } => json!({
+                "account_id": account_id,
+                "source": source.as_str(),
+            }),
+            // actor is the admin performing the action; include target account_id.
+            Self::ServerAdminRevoked { account_id } => json!({ "account_id": account_id }),
+            Self::AdminMapOwnershipChanged {
+                map_id,
+                old_owner,
+                new_owner,
+            } => json!({
+                "map_id": map_id,
+                "old_owner": old_owner,
+                "new_owner": new_owner,
+            }),
+            Self::AdminMapHardDeleted { map_id, name } => json!({
+                "map_id": map_id,
+                "name": name,
+            }),
+            Self::AdminAclOwnershipChanged {
+                acl_id,
+                old_owner,
+                new_owner,
+            } => json!({
+                "acl_id": acl_id,
+                "old_owner": old_owner,
+                "new_owner": new_owner,
+            }),
+            Self::AdminAclHardDeleted { acl_id, name } => json!({
+                "acl_id": acl_id,
+                "name": name,
+            }),
+            Self::EveCharacterBlocked {
+                eve_character_id,
+                reason,
+            } => json!({
+                "eve_character_id": eve_character_id,
+                "reason": reason,
+            }),
+            Self::EveCharacterUnblocked { eve_character_id } => json!({
+                "eve_character_id": eve_character_id,
+            }),
         }
     }
+}
+
+/// A row read back from the `audit_log` table — used by the admin
+/// audit-log read endpoint.
+#[derive(Debug, Clone)]
+pub struct AuditLogEntry {
+    pub id: Uuid,
+    pub occurred_at: DateTime<Utc>,
+    pub actor_account_id: Option<Uuid>,
+    pub event_type: String,
+    pub details: Value,
+}
+
+/// Reads audit log entries newest-first, optionally filtered by
+/// `event_type`, `actor`, and a keyset cursor `before` (`occurred_at < before`).
+/// `limit` is the maximum number of rows to return; the caller is expected to
+/// have already clamped it. All filters are bound parameters — no string
+/// interpolation, so there is no SQL injection surface.
+pub async fn list_audit_log(
+    pool: &PgPool,
+    event_type: Option<&str>,
+    actor: Option<Uuid>,
+    before: Option<DateTime<Utc>>,
+    limit: i64,
+) -> Result<Vec<AuditLogEntry>> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, occurred_at, actor_account_id, event_type, details
+        FROM audit_log
+        WHERE ($1::TEXT IS NULL        OR event_type       = $1)
+          AND ($2::UUID IS NULL        OR actor_account_id = $2)
+          AND ($3::TIMESTAMPTZ IS NULL OR occurred_at      < $3)
+        ORDER BY occurred_at DESC
+        LIMIT $4
+        "#,
+        event_type,
+        actor,
+        before,
+        limit,
+    )
+    .fetch_all(pool)
+    .await
+    .context("failed to read audit_log")?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| AuditLogEntry {
+            id: r.id,
+            occurred_at: r.occurred_at,
+            actor_account_id: r.actor_account_id,
+            event_type: r.event_type,
+            details: r.details,
+        })
+        .collect())
 }
 
 /// Writes a single audit event within an existing transaction.
@@ -387,5 +561,145 @@ mod tests {
         assert_eq!(d["account_id"], id.to_string());
         assert_eq!(d["eve_character_id"], 7i64);
         assert_eq!(d["character_name"], "Ghost Pilot");
+    }
+
+    #[test]
+    fn api_key_created_serialises_correctly() {
+        let account_id = test_uuid();
+        let key_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+        let event = AuditEvent::ApiKeyCreated {
+            account_id,
+            key_id,
+            name: "My App".into(),
+        };
+        assert_eq!(event.event_type(), "api_key_created");
+        let d = event.details();
+        assert_eq!(d["key_id"], key_id.to_string());
+        assert_eq!(d["name"], "My App");
+        assert!(d.get("account_id").is_none());
+    }
+
+    #[test]
+    fn server_admin_granted_serialises_correctly() {
+        let id = test_uuid();
+        let event = AuditEvent::ServerAdminGranted {
+            account_id: id,
+            source: ServerAdminGrantSource::FirstAccountBootstrap,
+        };
+        assert_eq!(event.event_type(), "server_admin_granted");
+        let d = event.details();
+        assert_eq!(d["account_id"], id.to_string());
+        assert_eq!(d["source"], "first_account_bootstrap");
+
+        let admin_grant = AuditEvent::ServerAdminGranted {
+            account_id: id,
+            source: ServerAdminGrantSource::AdminGrant,
+        };
+        assert_eq!(admin_grant.details()["source"], "admin_grant");
+    }
+
+    #[test]
+    fn api_key_revoked_serialises_correctly() {
+        let account_id = test_uuid();
+        let key_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+        let event = AuditEvent::ApiKeyRevoked { account_id, key_id };
+        assert_eq!(event.event_type(), "api_key_revoked");
+        assert_eq!(event.details()["key_id"], key_id.to_string());
+        assert!(event.details().get("account_id").is_none());
+    }
+
+    #[test]
+    fn server_admin_revoked_serialises_correctly() {
+        let id = test_uuid();
+        let event = AuditEvent::ServerAdminRevoked { account_id: id };
+        assert_eq!(event.event_type(), "server_admin_revoked");
+        assert_eq!(event.details()["account_id"], id.to_string());
+    }
+
+    #[test]
+    fn admin_map_ownership_changed_serialises_correctly() {
+        let map_id = test_uuid();
+        let old = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+        let new = Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap();
+        let event = AuditEvent::AdminMapOwnershipChanged {
+            map_id,
+            old_owner: old,
+            new_owner: new,
+        };
+        assert_eq!(event.event_type(), "admin_map_ownership_changed");
+        let d = event.details();
+        assert_eq!(d["map_id"], map_id.to_string());
+        assert_eq!(d["old_owner"], old.to_string());
+        assert_eq!(d["new_owner"], new.to_string());
+    }
+
+    #[test]
+    fn admin_map_hard_deleted_serialises_correctly() {
+        let map_id = test_uuid();
+        let event = AuditEvent::AdminMapHardDeleted {
+            map_id,
+            name: "Test Map".into(),
+        };
+        assert_eq!(event.event_type(), "admin_map_hard_deleted");
+        let d = event.details();
+        assert_eq!(d["map_id"], map_id.to_string());
+        assert_eq!(d["name"], "Test Map");
+    }
+
+    #[test]
+    fn admin_acl_ownership_changed_serialises_correctly() {
+        let acl_id = test_uuid();
+        let old = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+        let new = Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap();
+        let event = AuditEvent::AdminAclOwnershipChanged {
+            acl_id,
+            old_owner: old,
+            new_owner: new,
+        };
+        assert_eq!(event.event_type(), "admin_acl_ownership_changed");
+        let d = event.details();
+        assert_eq!(d["acl_id"], acl_id.to_string());
+        assert_eq!(d["old_owner"], old.to_string());
+        assert_eq!(d["new_owner"], new.to_string());
+    }
+
+    #[test]
+    fn admin_acl_hard_deleted_serialises_correctly() {
+        let acl_id = test_uuid();
+        let event = AuditEvent::AdminAclHardDeleted {
+            acl_id,
+            name: "Test ACL".into(),
+        };
+        assert_eq!(event.event_type(), "admin_acl_hard_deleted");
+        let d = event.details();
+        assert_eq!(d["acl_id"], acl_id.to_string());
+        assert_eq!(d["name"], "Test ACL");
+    }
+
+    #[test]
+    fn eve_character_blocked_serialises_correctly() {
+        let event = AuditEvent::EveCharacterBlocked {
+            eve_character_id: 12345,
+            reason: Some("botting".into()),
+        };
+        assert_eq!(event.event_type(), "eve_character_blocked");
+        let d = event.details();
+        assert_eq!(d["eve_character_id"], 12345i64);
+        assert_eq!(d["reason"], "botting");
+
+        let no_reason = AuditEvent::EveCharacterBlocked {
+            eve_character_id: 12345,
+            reason: None,
+        };
+        assert!(no_reason.details()["reason"].is_null());
+    }
+
+    #[test]
+    fn eve_character_unblocked_serialises_correctly() {
+        let event = AuditEvent::EveCharacterUnblocked {
+            eve_character_id: 12345,
+        };
+        assert_eq!(event.event_type(), "eve_character_unblocked");
+        assert_eq!(event.details()["eve_character_id"], 12345i64);
     }
 }

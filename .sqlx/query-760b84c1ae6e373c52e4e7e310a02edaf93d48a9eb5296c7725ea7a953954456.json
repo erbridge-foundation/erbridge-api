@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO blocked_eve_character (eve_character_id, reason)\n        VALUES ($1, $2)\n        ON CONFLICT (eve_character_id) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "760b84c1ae6e373c52e4e7e310a02edaf93d48a9eb5296c7725ea7a953954456"
+}

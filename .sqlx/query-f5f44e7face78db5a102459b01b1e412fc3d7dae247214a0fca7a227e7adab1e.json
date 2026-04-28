@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO eve_character (eve_character_id, name, corporation_id, is_main)\n        VALUES (7999999, 'Ghost Pilot', 1000, false)\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f5f44e7face78db5a102459b01b1e412fc3d7dae247214a0fca7a227e7adab1e"
+}

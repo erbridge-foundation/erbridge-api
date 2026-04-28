@@ -4,6 +4,7 @@ use aes_gcm::{
 };
 use anyhow::{Result, anyhow};
 use rand::Rng as _;
+use sha2::Digest as _;
 use subtle::ConstantTimeEq as _;
 
 /// Encrypts `plaintext` with AES-256-GCM using `key`.
@@ -42,6 +43,23 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>> {
     cipher
         .decrypt(nonce, ciphertext)
         .map_err(|e| anyhow!("decryption failed: {e}"))
+}
+
+/// Generates a new API key: `erbridge_<32 lowercase hex chars>` (128 bits of entropy).
+/// Output is always exactly 41 chars. The returned string is the plaintext — hash it
+/// with `sha256_hex` before storing.
+pub fn generate_api_key() -> String {
+    let mut bytes = [0u8; 16];
+    rand::rng().fill_bytes(&mut bytes);
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("erbridge_{hex}")
+}
+
+/// Returns the lowercase hex-encoded SHA-256 digest of `input`.
+/// Used to hash API keys before storage — never store the plaintext.
+pub fn sha256_hex(input: &[u8]) -> String {
+    let hash = sha2::Sha256::digest(input);
+    hash.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Compares two byte slices in constant time.
@@ -133,5 +151,38 @@ mod tests {
     #[test]
     fn constant_time_eq_one_empty() {
         assert!(!constant_time_eq(b"", b"x"));
+    }
+
+    #[test]
+    fn generate_api_key_has_correct_prefix_and_length() {
+        let key = generate_api_key();
+        assert!(key.starts_with("erbridge_"));
+        assert_eq!(key.len(), 41);
+    }
+
+    #[test]
+    fn generate_api_key_suffix_is_lowercase_hex() {
+        let key = generate_api_key();
+        let suffix = key.strip_prefix("erbridge_").unwrap();
+        assert_eq!(suffix.len(), 32);
+        assert!(
+            suffix
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
+    }
+
+    #[test]
+    fn generate_api_key_produces_unique_values() {
+        let a = generate_api_key();
+        let b = generate_api_key();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn sha256_hex_empty_input() {
+        let h = sha256_hex(b"");
+        assert_eq!(h.len(), 64);
+        assert!(h.starts_with("e3b0c44298fc1c149afb"));
     }
 }

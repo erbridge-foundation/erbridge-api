@@ -1,0 +1,83 @@
+use std::sync::Arc;
+
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
+use uuid::Uuid;
+use validator::Validate;
+
+use crate::{
+    db::api_key::list_account_api_keys,
+    dto::{
+        account::{ApiKeyCreatedResponse, ApiKeyEntry, ApiKeyListResponse, CreateApiKeyRequest},
+        envelope::ApiResponse,
+    },
+    extractors::AccountId,
+    services::account::{
+        create_api_key as svc_create_api_key, revoke_api_key as svc_revoke_api_key,
+    },
+    state::AppState,
+};
+
+pub async fn create_api_key(
+    State(state): State<Arc<AppState>>,
+    AccountId(account_id): AccountId,
+    Json(body): Json<CreateApiKeyRequest>,
+) -> Result<(StatusCode, Json<ApiResponse<ApiKeyCreatedResponse>>), StatusCode> {
+    body.validate()
+        .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+
+    let created = svc_create_api_key(&state.db, account_id, &body.name)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::ok(ApiKeyCreatedResponse {
+            id: created.key.id,
+            name: created.key.name,
+            api_key: created.plaintext,
+            created_at: created.key.created_at,
+        })),
+    ))
+}
+
+pub async fn list_api_keys_handler(
+    State(state): State<Arc<AppState>>,
+    AccountId(account_id): AccountId,
+) -> Result<Json<ApiResponse<ApiKeyListResponse>>, StatusCode> {
+    let keys = list_account_api_keys(&state.db, account_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let entries = keys
+        .into_iter()
+        .map(|k| ApiKeyEntry {
+            id: k.id,
+            name: k.name,
+            created_at: k.created_at,
+        })
+        .collect();
+
+    Ok(Json(ApiResponse::ok(ApiKeyListResponse {
+        api_keys: entries,
+    })))
+}
+
+pub async fn revoke_api_key(
+    State(state): State<Arc<AppState>>,
+    AccountId(account_id): AccountId,
+    Path(key_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let deleted = svc_revoke_api_key(&state.db, account_id, key_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}

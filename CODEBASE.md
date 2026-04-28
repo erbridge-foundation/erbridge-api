@@ -20,14 +20,22 @@ erbridge-api/
 │   ├── 0007_create_system_edges_view.sql
 │   ├── 0008_create_acl.sql
 │   ├── 0009_create_acl_member.sql
-│   └── 0010_create_map_acl.sql
+│   ├── 0010_create_map_acl.sql
+│   ├── 0015_account_server_admin.sql
+│   └── 0016_blocked_eve_character.sql
 ├── tests/
 │   ├── common/mod.rs               # Shared test helpers (pg-embed, wiremock setup)
 │   ├── audit_log.rs                # Integration tests for audit log
 │   ├── map_handler_test.rs         # Integration tests for map HTTP handlers
 │   ├── map_service_test.rs         # Integration tests for map service layer
 │   ├── test_acl_handlers.rs        # Integration tests for ACL HTTP handlers
+│   ├── test_admin_audit_log.rs     # Integration tests for admin audit-log endpoint
+│   ├── test_admin_integration.rs   # Integration tests for admin gating, bootstrap, blocked-char flow
+│   ├── test_api_key.rs             # Integration tests for API key endpoints
+│   ├── test_auth_handlers.rs       # Integration tests for auth handlers
+│   ├── test_character_handlers.rs  # Integration tests for character handlers
 │   ├── test_db_acl.rs              # Integration tests for ACL DB layer
+│   ├── test_esi_retry.rs           # Integration tests for ESI retry logic
 │   ├── test_permissions.rs         # Integration tests for permission resolution
 │   └── test_service_acl.rs         # Integration tests for ACL service layer
 └── src/
@@ -35,8 +43,8 @@ erbridge-api/
     ├── lib.rs                      # Router construction + module declarations
     ├── config.rs                   # Config struct, env parsing, key derivation
     ├── state.rs                    # AppState (shared via Arc<AppState>)
-    ├── middleware.rs               # require_active_account middleware
-    ├── extractors.rs               # AccountId extractor (JWT cookie → Uuid)
+    ├── middleware.rs               # require_active_account + require_server_admin middleware
+    ├── extractors.rs               # AccountId + ServerAdmin extractors (JWT cookie → Uuid)
     ├── crypto.rs                   # AES-256-GCM encrypt/decrypt
     ├── permissions.rs              # effective_permission() — map ACL resolution (ADR-026)
     ├── audit.rs                    # AuditEvent enum + record_in_tx()
@@ -57,6 +65,7 @@ erbridge-api/
     │   └── route.rs                # Recursive CTE route finder (system_edges view)
     ├── dto/
     │   ├── mod.rs
+    │   ├── admin.rs                # Admin DTOs: AccountResponse, BlockedCharacterResponse, AuditLogEntry + request types
     │   ├── auth.rs                 # AuthMode, SessionClaims, StateClaims, MeResponse
     │   ├── envelope.rs             # ApiResponse<T> — {"data":…} or {"error":"…"}
     │   ├── health.rs               # HealthResponse, ComponentState
@@ -73,13 +82,15 @@ erbridge-api/
     │   └── universe.rs             # POST /universe/names/ (ID → name resolution)
     ├── handlers/
     │   ├── mod.rs
+    │   ├── admin.rs                # All /api/v1/admin/* handlers
     │   ├── auth.rs                 # login, add_character, callback, logout, me
-    │   ├── character.rs            # list, remove, set_main, delete_account + admin stubs
+    │   ├── character.rs            # list, remove, set_main, delete_account
     │   ├── health.rs               # GET /api/health
     │   ├── acl.rs                  # Full ACL + member CRUD handlers
     │   └── map.rs                  # Full map/connection/signature/route handlers
     ├── services/
     │   ├── mod.rs
+    │   ├── admin.rs                # Admin service: accounts, blocked chars, maps, acls, audit log
     │   ├── auth.rs                 # login_or_register, attach_character_to_account
     │   ├── acl.rs                  # ACL + member management with permission checks
     │   ├── map.rs                  # Map management + connection/signature/route operations
@@ -125,6 +136,9 @@ erbridge-api/
 
 ### Authenticated (`require_active_account` middleware applied)
 
+> **Note:** Login and add-character flows also gate on blocked EVE character IDs. If any character
+> on the account is blocked, `require_active_account` returns 403 `account is blocked`.
+
 | Method | Path | Handler | Min Permission |
 |--------|------|---------|----------------|
 | GET | `/api/v1/me` | `handlers::auth::me` | active account |
@@ -156,6 +170,28 @@ erbridge-api/
 | POST | `/api/v1/acls/{acl_id}/members` | `handlers::acl::add` | Manage (ACL) |
 | PATCH | `/api/v1/acls/{acl_id}/members/{member_id}` | `handlers::acl::update_member` | Manage (ACL) |
 | DELETE | `/api/v1/acls/{acl_id}/members/{member_id}` | `handlers::acl::delete_member` | Manage (ACL) |
+
+### Server Admin (`require_active_account` + `require_server_admin` middleware applied)
+
+| Method | Path | Handler |
+|--------|------|---------|
+| GET | `/api/v1/admin/accounts` | `handlers::admin::list_accounts` |
+| POST | `/api/v1/admin/accounts/{account_id}/grant-admin` | `handlers::admin::grant_admin` |
+| POST | `/api/v1/admin/accounts/{account_id}/revoke-admin` | `handlers::admin::revoke_admin` |
+| POST | `/api/v1/admin/accounts/{account_id}/purge` | `handlers::admin::purge_account` |
+| POST | `/api/v1/admin/accounts/{account_id}/restore` | `handlers::admin::restore_account` |
+| GET | `/api/v1/admin/maps` | `handlers::admin::list_maps` |
+| PATCH | `/api/v1/admin/maps/{map_id}/owner` | `handlers::admin::change_map_owner` |
+| DELETE | `/api/v1/admin/maps/{map_id}` | `handlers::admin::hard_delete_map` |
+| GET | `/api/v1/admin/acls` | `handlers::admin::list_acls` |
+| PATCH | `/api/v1/admin/acls/{acl_id}/owner` | `handlers::admin::change_acl_owner` |
+| DELETE | `/api/v1/admin/acls/{acl_id}` | `handlers::admin::hard_delete_acl` |
+| GET | `/api/v1/admin/characters/blocked` | `handlers::admin::list_blocked_characters` |
+| POST | `/api/v1/admin/characters/{eve_id}/block` | `handlers::admin::block_character` |
+| DELETE | `/api/v1/admin/characters/{eve_id}/block` | `handlers::admin::unblock_character` |
+| GET | `/api/v1/admin/audit-log` | `handlers::admin::list_audit_log` |
+
+Query params for audit-log: `event_type` (filter), `actor_account_id` (filter), `before` (cursor — audit log id), `limit` (default 50, max 200).
 
 ### Response Envelope
 
@@ -201,6 +237,7 @@ once and retries (handles CCP key rotation).
 | created_at / updated_at | TIMESTAMPTZ | |
 | status | TEXT | `active` \| `pending_delete` |
 | delete_requested_at | TIMESTAMPTZ | nullable |
+| is_server_admin | BOOLEAN | default false; partial unique index ensures at most one bootstrap admin |
 
 ### `eve_character`
 | Column | Type | Notes |
@@ -240,6 +277,16 @@ as JSONB. Companion singleton table `sde_solar_system_metadata(id=1, sde_version
 | details | JSONB | event-specific payload |
 
 Indexes on `occurred_at DESC`, `actor_account_id`.
+
+### `blocked_eve_character`
+| Column | Type | Notes |
+|--------|------|-------|
+| eve_character_id | BIGINT PK | CCP's character ID |
+| reason | TEXT | nullable |
+| blocked_at | TIMESTAMPTZ | default now() |
+
+Blocking any EVE character ID bans the whole account that owns it. `require_active_account` checks
+this table and returns 403 if the account has any blocked character.
 
 ### `map`
 | Column | Type | Notes |
@@ -363,6 +410,9 @@ recursive CTE route finder. Columns: `map_id`, `connection_id`, `status`, `life_
 | ADR-029 | Refresh token age: use `eve_character.updated_at`; re-auth if `> ESI_REFRESH_TOKEN_MAX_DAYS` (default 7d) |
 | ADR-030 | JWKS rotation retry on verification failure |
 | ADR-031 | Ghost character — `account_id = NULL` rows claimable at first login |
+| — | Server admin bootstrap: first account registered is automatically granted `is_server_admin = true` (see `DECISIONS.md`) |
+| — | One blocked character = account banned: any `blocked_eve_character` match on any character in the account → 403 |
+| — | Audit log scope: all admin/compliance actions go to `audit_log`; map mutations go to `map_events` (see `DECISIONS.md`) |
 
 ### Permission Model (ADR-026)
 
@@ -478,7 +528,7 @@ Required ESI scopes: `esi-location.read_location.v1`, `esi-location.read_ship_ty
 ## Known Issues and Gaps
 
 ### Upcoming Work
-- Admin-role routes (`admin_purge_account`, `admin_restore_account`) are stubs (always return 403, not registered in `lib.rs`); full implementation is planned as part of the `/api/v1/admin` endpoint work.
+- No known stubs remaining in the server-admin feature. All `/api/v1/admin` routes are fully implemented.
 
 ### Architectural / Design Issues
 - **ACL permission bypass in `require_acl_permission`:** Only direct character membership is checked. Corporation/alliance ACL membership does not grant ACL management rights — that is intentional per the design (manage/admin are character-only), but the code does not have a comment to that effect.

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT EXISTS (\n            SELECT 1\n            FROM eve_character ec\n            JOIN blocked_eve_character b ON b.eve_character_id = ec.eve_character_id\n            WHERE ec.account_id = $1\n        ) AS \"exists!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "af506e172e6858f1bf14e5645676dccd5fa14fc32a06468af026422dbeb19e1e"
+}

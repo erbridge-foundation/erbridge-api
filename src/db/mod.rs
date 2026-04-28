@@ -1,6 +1,7 @@
 pub mod account;
 pub mod acl;
 pub mod acl_member;
+pub mod api_key;
 pub mod character;
 pub mod connection;
 pub mod map;

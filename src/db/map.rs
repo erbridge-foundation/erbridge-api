@@ -174,6 +174,75 @@ pub async fn delete_map(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<
     Ok(())
 }
 
+/// Returns all maps regardless of `deleted` flag — for the admin list endpoint.
+pub async fn find_all_maps_admin(pool: &PgPool) -> Result<Vec<Map>> {
+    sqlx::query_as!(
+        Map,
+        r#"
+        SELECT id, name, slug, owner_account_id, description, deleted, created_at, updated_at,
+               last_checkpoint_seq, last_checkpoint_at, retention_days
+        FROM map
+        ORDER BY created_at DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .context("failed to fetch all maps for admin")
+}
+
+/// Looks up a map by id including soft-deleted rows. Used by admin endpoints
+/// where the soft-delete state is not a hiding criterion.
+pub async fn find_map_by_id_including_deleted(pool: &PgPool, id: Uuid) -> Result<Option<Map>> {
+    sqlx::query_as!(
+        Map,
+        r#"
+        SELECT id, name, slug, owner_account_id, description, deleted, created_at, updated_at,
+               last_checkpoint_seq, last_checkpoint_at, retention_days
+        FROM map
+        WHERE id = $1
+        "#,
+        id,
+    )
+    .fetch_optional(pool)
+    .await
+    .context("failed to fetch map by id (including deleted)")
+}
+
+/// Reassigns map ownership. Caller is responsible for resolving the previous
+/// owner (so it can be embedded in the audit event); this helper just performs
+/// the write. Returns `true` if the row existed and was updated.
+pub async fn change_map_owner(
+    tx: &mut Transaction<'_, Postgres>,
+    map_id: Uuid,
+    new_owner: Uuid,
+) -> Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE map
+        SET owner_account_id = $2, updated_at = now()
+        WHERE id = $1
+        "#,
+        map_id,
+        new_owner,
+    )
+    .execute(&mut **tx)
+    .await
+    .context("failed to change map owner")?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Hard-deletes a map row. FK cascades remove `map_connections`,
+/// `map_connection_ends`, `map_signatures`, `map_events`, `map_checkpoints`,
+/// and `map_acl` (per migration definitions).
+/// Returns `true` if a row was deleted.
+pub async fn hard_delete_map(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<bool> {
+    let result = sqlx::query!("DELETE FROM map WHERE id = $1", id)
+        .execute(&mut **tx)
+        .await
+        .context("failed to hard-delete map")?;
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn update_last_checkpoint(
     tx: &mut Transaction<'_, Postgres>,
     id: Uuid,

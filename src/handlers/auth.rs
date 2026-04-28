@@ -216,6 +216,21 @@ pub async fn callback(
         err(StatusCode::BAD_REQUEST, "invalid EVE token")
     })?;
 
+    // --- Reject blocked EVE characters before any account/character work ---
+    let is_blocked = crate::db::account::is_eve_character_blocked(&state.db, eve_character_id)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, eve_character_id, "failed to check blocked_eve_character");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+        })?;
+    if is_blocked {
+        warn!(
+            eve_character_id,
+            "rejected login/add for blocked eve character"
+        );
+        return Err(err(StatusCode::FORBIDDEN, "eve character is blocked"));
+    }
+
     // --- Fetch corp/alliance from ESI ---
     let public_info =
         get_character_public_info(&state.http, &state.config.esi_base, eve_character_id)
@@ -234,6 +249,19 @@ pub async fn callback(
                 warn!("add mode state JWT missing account_id");
                 err(StatusCode::BAD_REQUEST, "invalid state")
             })?;
+
+            // One ban = account banned. If any character already on the account
+            // is blocked, refuse to attach more characters.
+            let banned = crate::db::account::account_has_blocked_character(&state.db, account_id)
+                .await
+                .map_err(|e| {
+                    warn!(error = %e, %account_id, "failed to check account_has_blocked_character");
+                    err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                })?;
+            if banned {
+                warn!(%account_id, eve_character_id, "rejected add-character for banned account");
+                return Err(err(StatusCode::FORBIDDEN, "account is blocked"));
+            }
 
             attach_character_to_account(
                 &state.db,
@@ -302,6 +330,19 @@ pub async fn callback(
                     }
                 }
             })?;
+
+            // One ban = account banned. Reject login via an unblocked alt of a
+            // banned account before issuing a session cookie.
+            let banned = crate::db::account::account_has_blocked_character(&state.db, account_id)
+                .await
+                .map_err(|e| {
+                    warn!(error = %e, %account_id, "failed to check account_has_blocked_character");
+                    err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                })?;
+            if banned {
+                warn!(%account_id, eve_character_id, "rejected login for banned account (alt of blocked character)");
+                return Err(err(StatusCode::FORBIDDEN, "account is blocked"));
+            }
 
             register_account_with_online_poller(&state, account_id).await;
 

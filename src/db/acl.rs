@@ -142,6 +142,55 @@ pub async fn set_acl_pending_delete(
     Ok(())
 }
 
+/// Returns every ACL on the instance — for the admin list endpoint.
+/// Members are intentionally NOT joined; the admin role does not have member
+/// visibility (DECISIONS.md "Capability boundaries").
+pub async fn find_all_acls_admin(pool: &PgPool) -> Result<Vec<Acl>> {
+    sqlx::query_as!(
+        Acl,
+        r#"
+        SELECT id, name, owner_account_id, pending_delete_at, created_at, updated_at
+        FROM acl
+        ORDER BY created_at DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .context("failed to fetch all acls for admin")
+}
+
+/// Reassigns ACL ownership. Returns `true` if the row existed and was updated.
+pub async fn change_acl_owner(
+    tx: &mut Transaction<'_, Postgres>,
+    acl_id: Uuid,
+    new_owner: Uuid,
+) -> Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE acl
+        SET owner_account_id = $2, updated_at = now()
+        WHERE id = $1
+        "#,
+        acl_id,
+        new_owner,
+    )
+    .execute(&mut **tx)
+    .await
+    .context("failed to change acl owner")?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Hard-deletes an ACL row. FK cascades remove `acl_member` and `map_acl`
+/// (per migration definitions).
+/// Returns `true` if a row was deleted.
+pub async fn hard_delete_acl(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<bool> {
+    let result = sqlx::query!("DELETE FROM acl WHERE id = $1", id)
+        .execute(&mut **tx)
+        .await
+        .context("failed to hard-delete acl")?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// Hard-deletes all orphaned ACLs whose grace period has expired.
 /// Returns the number of ACLs deleted.
 pub async fn purge_expired_acls(pool: &PgPool, grace_days: u32) -> Result<u64> {

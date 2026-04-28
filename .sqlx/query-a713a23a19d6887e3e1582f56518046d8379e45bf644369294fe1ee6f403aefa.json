@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT m.id AS \"id!\"\n        FROM map m\n        LEFT JOIN map_events e ON e.map_id = m.id\n        WHERE m.deleted = false AND m.id = $1\n        GROUP BY m.id, m.last_checkpoint_seq\n        HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a713a23a19d6887e3e1582f56518046d8379e45bf644369294fe1ee6f403aefa"
+}
