@@ -24,6 +24,7 @@ use crate::{
 
 const DEFAULT_CACHE_SECS: u64 = 5;
 const BROADCAST_CAPACITY: usize = 32;
+const STALE_THRESHOLD: Duration = Duration::from_secs(24 * 3600);
 
 /// A location change event broadcast to all active map session subscribers.
 #[derive(Debug, Clone)]
@@ -60,6 +61,8 @@ pub fn spawn_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
 
 async fn run_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
+    let mut iteration: u64 = 0;
+
     const PANIC_BACKOFF: Duration = Duration::from_secs(5);
 
     loop {
@@ -67,6 +70,13 @@ async fn run_location_poller(state: Arc<AppState>, cancel: CancellationToken) {
             info!("location poller: shutting down");
             return;
         }
+
+        // Periodically prune entries that haven't been polled in over 24h.
+        if iteration.is_multiple_of(100) {
+            let now = Instant::now();
+            next_poll_at.retain(|_, t| now.saturating_duration_since(*t) < STALE_THRESHOLD);
+        }
+        iteration += 1;
 
         let result = std::panic::AssertUnwindSafe(location_poller_tick(
             Arc::clone(&state),
@@ -395,5 +405,20 @@ mod tests {
             .catch_unwind()
             .await;
         assert!(caught.is_err(), "expected catch_unwind to catch the panic");
+    }
+
+    #[test]
+    fn stale_entries_are_pruned() {
+        let mut map: HashMap<i64, Instant> = HashMap::new();
+        let stale = Instant::now() - Duration::from_secs(25 * 3600);
+        let fresh = Instant::now() + Duration::from_secs(60);
+        map.insert(1, stale);
+        map.insert(2, fresh);
+
+        let now = Instant::now();
+        map.retain(|_, t| now.saturating_duration_since(*t) < STALE_THRESHOLD);
+
+        assert!(!map.contains_key(&1), "stale entry should be pruned");
+        assert!(map.contains_key(&2), "fresh entry should be kept");
     }
 }

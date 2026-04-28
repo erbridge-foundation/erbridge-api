@@ -23,6 +23,7 @@ use crate::{
 
 const DEFAULT_CACHE_SECS: u64 = 60;
 const MIN_BATCH_DELAY_MS: u64 = 100;
+const STALE_THRESHOLD: Duration = Duration::from_secs(24 * 3600);
 
 #[derive(Debug, Deserialize)]
 struct OnlineResponse {
@@ -52,6 +53,7 @@ async fn run_online_poller(
     // added here when the login handler sends their IDs, and refreshed every
     // cycle from the DB so newly-added characters are picked up automatically.
     let mut next_poll_at: HashMap<i64, Instant> = HashMap::new();
+    let mut iteration: u64 = 0;
 
     const PANIC_BACKOFF: Duration = Duration::from_secs(5);
 
@@ -60,6 +62,14 @@ async fn run_online_poller(
             info!("online poller: shutting down");
             return;
         }
+
+        // Periodically prune entries that haven't been polled in over 24h
+        // (these are characters removed from the DB but lingering in the map).
+        if iteration.is_multiple_of(100) {
+            let now = Instant::now();
+            next_poll_at.retain(|_, t| now.saturating_duration_since(*t) < STALE_THRESHOLD);
+        }
+        iteration += 1;
 
         let result = std::panic::AssertUnwindSafe(online_poller_tick(
             Arc::clone(&state),
@@ -391,5 +401,20 @@ mod tests {
             .catch_unwind()
             .await;
         assert!(caught.is_err(), "expected catch_unwind to catch the panic");
+    }
+
+    #[test]
+    fn stale_entries_are_pruned() {
+        let mut map: HashMap<i64, Instant> = HashMap::new();
+        let stale = Instant::now() - Duration::from_secs(25 * 3600);
+        let fresh = Instant::now() + Duration::from_secs(60);
+        map.insert(1, stale);
+        map.insert(2, fresh);
+
+        let now = Instant::now();
+        map.retain(|_, t| now.saturating_duration_since(*t) < STALE_THRESHOLD);
+
+        assert!(!map.contains_key(&1), "stale entry should be pruned");
+        assert!(map.contains_key(&2), "fresh entry should be kept");
     }
 }
