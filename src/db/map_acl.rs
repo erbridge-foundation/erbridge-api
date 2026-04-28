@@ -79,7 +79,9 @@ pub async fn find_acls_for_map(pool: &PgPool, map_id: Uuid) -> Result<Vec<Acl>> 
         SELECT a.id, a.name, a.owner_account_id, a.pending_delete_at, a.created_at, a.updated_at
         FROM acl a
         JOIN map_acl ma ON ma.acl_id = a.id
+        JOIN map m ON m.id = ma.map_id
         WHERE ma.map_id = $1
+          AND m.deleted = false
         ORDER BY a.name
         "#,
         map_id,

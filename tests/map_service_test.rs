@@ -3,6 +3,7 @@ mod common;
 use chrono::Utc;
 use erbridge_api::{
     db::{
+        map_acl::find_acls_for_map,
         map_types::{ConnectionStatus, LifeState, MassState, Side},
         sde_solar_system::SdeSolarSystem,
     },
@@ -811,4 +812,33 @@ async fn detach_acl_from_map_records_audit_row() {
         .unwrap();
     let after = audit_event_count(&pool, "acl_detached_from_map").await;
     assert_eq!(after, before + 1);
+}
+
+#[tokio::test]
+async fn find_acls_for_map_excludes_soft_deleted_map() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 80003, "Soft Delete Owner").await;
+
+    let map = create_map(&pool, account_id, "Deleted Map", "deleted-map", None, None)
+        .await
+        .unwrap();
+    let acl = create_acl(&pool, account_id, "Test ACL").await.unwrap();
+
+    attach_acl_to_map(&pool, map.id, acl.id, account_id)
+        .await
+        .unwrap();
+
+    // Confirm ACL is visible before soft-delete.
+    let acls_before = find_acls_for_map(&pool, map.id).await.unwrap();
+    assert_eq!(acls_before.len(), 1);
+
+    // Soft-delete the map directly.
+    sqlx::query!("UPDATE map SET deleted = true WHERE id = $1", map.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // ACL list must now be empty.
+    let acls_after = find_acls_for_map(&pool, map.id).await.unwrap();
+    assert!(acls_after.is_empty());
 }
