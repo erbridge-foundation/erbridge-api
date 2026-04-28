@@ -51,6 +51,13 @@ impl Config {
         let encryption_secret =
             std::env::var("ENCRYPTION_SECRET").context("ENCRYPTION_SECRET must be set")?;
 
+        if encryption_secret.len() < 32 {
+            anyhow::bail!(
+                "ENCRYPTION_SECRET must be at least 32 bytes (got {})",
+                encryption_secret.len()
+            );
+        }
+
         let aes_key: [u8; 32] = Sha256::digest(encryption_secret.as_bytes()).into();
 
         let jwt_input = format!("erbridge:jwt:{}", encryption_secret);
@@ -495,5 +502,54 @@ mod tests {
         check_accepts("ESI_REFRESH_TOKEN_MAX_DAYS", "14", |c| {
             c.esi_refresh_token_max_days == 14
         });
+    }
+
+    #[test]
+    fn encryption_secret_rejects_empty() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe { std::env::set_var("ENCRYPTION_SECRET", "") }
+
+        match Config::from_env() {
+            Err(e) => assert!(
+                e.to_string().contains("ENCRYPTION_SECRET"),
+                "error message should mention ENCRYPTION_SECRET, got: {e}"
+            ),
+            Ok(_) => panic!("expected error for empty ENCRYPTION_SECRET"),
+        }
+
+        clear_required_env_vars();
+    }
+
+    #[test]
+    fn encryption_secret_rejects_short() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe { std::env::set_var("ENCRYPTION_SECRET", "tooshort") }
+
+        match Config::from_env() {
+            Err(e) => assert!(
+                e.to_string().contains("ENCRYPTION_SECRET"),
+                "error message should mention ENCRYPTION_SECRET, got: {e}"
+            ),
+            Ok(_) => panic!("expected error for short ENCRYPTION_SECRET"),
+        }
+
+        clear_required_env_vars();
+    }
+
+    #[test]
+    fn encryption_secret_accepts_exactly_32_bytes() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        set_required_env_vars();
+        unsafe { std::env::set_var("ENCRYPTION_SECRET", "a".repeat(32)) }
+
+        let result = Config::from_env();
+        assert!(
+            result.is_ok(),
+            "expected success for 32-byte ENCRYPTION_SECRET"
+        );
+
+        clear_required_env_vars();
     }
 }
