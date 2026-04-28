@@ -37,7 +37,7 @@ strong improvement, **P3** = polish.
 | M. N+1 / soft-delete leakage | M1 M2 M3 M4 | ✓ all | |
 | N. DTO / validation polish | N1 N2 N3 | ✓ all | |
 | O. Misc | O1 O2 O3 | ✓ all | |
-| P. Tests | P1 P2 P3 | P1 P2 | P3 pending |
+| P. Tests | P1 P2 P3 | ✓ all | |
 
 ---
 
