@@ -41,16 +41,18 @@ pub async fn attach_character_to_account(
                 character::claim_ghost_character(
                     &mut tx,
                     aes_key,
-                    input.eve_character_id,
-                    input.account_id,
-                    false,
-                    input.name,
-                    input.corporation_id,
-                    input.alliance_id,
-                    input.esi_client_id,
-                    input.access_token,
-                    input.refresh_token,
-                    input.esi_token_expires_at,
+                    character::ClaimGhostCharacterInput {
+                        eve_character_id: input.eve_character_id,
+                        account_id: input.account_id,
+                        is_main: false,
+                        name: input.name,
+                        corporation_id: input.corporation_id,
+                        alliance_id: input.alliance_id,
+                        esi_client_id: input.esi_client_id,
+                        access_token: input.access_token,
+                        refresh_token: input.refresh_token,
+                        esi_token_expires_at: input.esi_token_expires_at,
+                    },
                 )
                 .await?;
                 audit::record_in_tx(
@@ -169,16 +171,18 @@ pub async fn login_or_register(
                 character::claim_ghost_character(
                     &mut tx,
                     aes_key,
-                    input.eve_character_id,
-                    acc.id,
-                    true,
-                    input.name,
-                    input.corporation_id,
-                    input.alliance_id,
-                    input.esi_client_id,
-                    input.access_token,
-                    input.refresh_token,
-                    input.esi_token_expires_at,
+                    character::ClaimGhostCharacterInput {
+                        eve_character_id: input.eve_character_id,
+                        account_id: acc.id,
+                        is_main: true,
+                        name: input.name,
+                        corporation_id: input.corporation_id,
+                        alliance_id: input.alliance_id,
+                        esi_client_id: input.esi_client_id,
+                        access_token: input.access_token,
+                        refresh_token: input.refresh_token,
+                        esi_token_expires_at: input.esi_token_expires_at,
+                    },
                 )
                 .await?;
                 audit::record_in_tx(
