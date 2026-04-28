@@ -1,6 +1,6 @@
 # ER Bridge
 
-[![Build](https://github.com/erbridge-foundation/erbridge/actions/workflows/build.yml/badge.svg)](https://github.com/erbridge-foundation/erbridge/actions/workflows/build.yml)
+[![Build](https://github.com/erbridge-foundation/erbridge-api/actions/workflows/build.yml/badge.svg)](https://github.com/erbridge-foundation/erbridge-api/actions/workflows/build.yml)
 
 ---
 
