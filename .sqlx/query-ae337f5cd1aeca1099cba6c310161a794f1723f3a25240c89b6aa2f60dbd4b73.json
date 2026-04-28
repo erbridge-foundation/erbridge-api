@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT a.id, a.name, a.owner_account_id, a.pending_delete_at, a.created_at, a.updated_at\n        FROM acl a\n        JOIN map_acl ma ON ma.acl_id = a.id\n        WHERE ma.map_id = $1\n        ORDER BY a.name\n        ",
+  "query": "\n        SELECT a.id, a.name, a.owner_account_id, a.pending_delete_at, a.created_at, a.updated_at\n        FROM acl a\n        JOIN map_acl ma ON ma.acl_id = a.id\n        JOIN map m ON m.id = ma.map_id\n        WHERE ma.map_id = $1\n          AND m.deleted = false\n        ORDER BY a.name\n        ",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "c3c1e8544488b7936c502e996ee2ef9988b6e61d3ceef981b67abe87cd71f486"
+  "hash": "ae337f5cd1aeca1099cba6c310161a794f1723f3a25240c89b6aa2f60dbd4b73"
 }

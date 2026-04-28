@@ -55,7 +55,7 @@ async fn run_checkpoint_task(state: Arc<AppState>, cancel: CancellationToken) {
 async fn checkpoint_all_maps(state: &AppState) -> anyhow::Result<()> {
     let pool = &state.db;
 
-    // Find maps where the latest event seq exceeds the last checkpoint seq.
+    // Find non-deleted maps where the latest event seq exceeds the last checkpoint seq.
     let maps_needing_checkpoint = sqlx::query!(
         r#"
         SELECT m.id AS map_id,
@@ -63,6 +63,7 @@ async fn checkpoint_all_maps(state: &AppState) -> anyhow::Result<()> {
                COALESCE(MAX(e.seq), 0) AS "latest_seq!"
         FROM map m
         LEFT JOIN map_events e ON e.map_id = m.id
+        WHERE m.deleted = false
         GROUP BY m.id, m.last_checkpoint_seq
         HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq
         "#,

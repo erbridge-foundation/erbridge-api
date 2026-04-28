@@ -4,6 +4,8 @@ use chrono::Utc;
 use erbridge_api::{
     db::{
         map_acl::find_acls_for_map,
+        map_checkpoint::find_latest_checkpoint,
+        map_event::append_event,
         map_types::{ConnectionStatus, LifeState, MassState, Side},
         sde_solar_system::SdeSolarSystem,
     },
@@ -841,4 +843,82 @@ async fn find_acls_for_map_excludes_soft_deleted_map() {
     // ACL list must now be empty.
     let acls_after = find_acls_for_map(&pool, map.id).await.unwrap();
     assert!(acls_after.is_empty());
+}
+
+#[tokio::test]
+async fn checkpoint_candidate_query_excludes_soft_deleted_maps() {
+    let (_pg, pool) = common::setup_db().await;
+    let account_id = make_account(&pool, 90001, "Checkpoint Owner").await;
+
+    let map = create_map(&pool, account_id, "CP Map", "cp-map", None, None)
+        .await
+        .unwrap();
+
+    // Append an event so last_checkpoint_seq < latest_seq.
+    let payload = serde_json::json!({});
+    let mut tx = pool.begin().await.unwrap();
+    append_event(
+        &mut tx,
+        map.id,
+        "map",
+        &map.id.to_string(),
+        "TestEvent",
+        None,
+        &payload,
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    // Before soft-delete: this map appears in the candidate set.
+    let is_candidate_before = sqlx::query_scalar!(
+        r#"
+        SELECT m.id AS "id!"
+        FROM map m
+        LEFT JOIN map_events e ON e.map_id = m.id
+        WHERE m.deleted = false AND m.id = $1
+        GROUP BY m.id, m.last_checkpoint_seq
+        HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq
+        "#,
+        map.id,
+    )
+    .fetch_optional(&pool)
+    .await
+    .unwrap()
+    .is_some();
+    assert!(
+        is_candidate_before,
+        "map should appear in candidate set before soft-delete"
+    );
+
+    // Soft-delete the map.
+    sqlx::query!("UPDATE map SET deleted = true WHERE id = $1", map.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // After soft-delete: the map must no longer appear in the candidate set.
+    let is_candidate_after = sqlx::query_scalar!(
+        r#"
+        SELECT m.id AS "id!"
+        FROM map m
+        LEFT JOIN map_events e ON e.map_id = m.id
+        WHERE m.deleted = false AND m.id = $1
+        GROUP BY m.id, m.last_checkpoint_seq
+        HAVING COALESCE(MAX(e.seq), 0) > m.last_checkpoint_seq
+        "#,
+        map.id,
+    )
+    .fetch_optional(&pool)
+    .await
+    .unwrap()
+    .is_some();
+    assert!(
+        !is_candidate_after,
+        "soft-deleted map must not appear in candidate set"
+    );
+
+    // No checkpoint row was written.
+    let cp = find_latest_checkpoint(&pool, map.id).await.unwrap();
+    assert!(cp.is_none());
 }
