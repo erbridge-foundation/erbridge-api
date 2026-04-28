@@ -1,11 +1,25 @@
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use thiserror::Error;
 use tracing::info;
 use uuid::Uuid;
 
 use crate::audit::{self, AuditEvent};
 use crate::db::{account, character};
+
+#[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("character is already linked to a different account")]
+    CharacterOwnerMismatch,
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+impl From<sqlx::Error> for AuthError {
+    fn from(e: sqlx::Error) -> Self {
+        AuthError::Internal(anyhow::Error::from(e))
+    }
+}
 
 pub struct AttachCharacterInput<'a> {
     pub account_id: Uuid,
@@ -29,7 +43,7 @@ pub async fn attach_character_to_account(
     pool: &PgPool,
     aes_key: &[u8; 32],
     input: AttachCharacterInput<'_>,
-) -> Result<()> {
+) -> Result<(), AuthError> {
     let existing =
         character::find_character_by_eve_id(pool, aes_key, input.eve_character_id).await?;
 
@@ -73,10 +87,9 @@ pub async fn attach_character_to_account(
                 );
             }
             Some(existing_account_id) => {
-                anyhow::ensure!(
-                    existing_account_id == input.account_id,
-                    "character is already linked to a different account"
-                );
+                if existing_account_id != input.account_id {
+                    return Err(AuthError::CharacterOwnerMismatch);
+                }
                 // Already on this account — refresh tokens; no audit event needed.
                 character::update_character_tokens(
                     pool,
@@ -160,7 +173,7 @@ pub async fn login_or_register(
     pool: &PgPool,
     aes_key: &[u8; 32],
     input: LoginInput<'_>,
-) -> Result<Uuid> {
+) -> Result<Uuid, AuthError> {
     let existing =
         character::find_character_by_eve_id(pool, aes_key, input.eve_character_id).await?;
 

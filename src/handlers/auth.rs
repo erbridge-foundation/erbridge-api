@@ -22,7 +22,7 @@ use crate::{
     esi::{character::get_character_public_info, jwks::parse_character_id, jwks::verify_eve_jwt},
     extractors::{AccountId, SESSION_COOKIE},
     services::auth::{
-        AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register,
+        AttachCharacterInput, AuthError, LoginInput, attach_character_to_account, login_or_register,
     },
     state::AppState,
 };
@@ -251,7 +251,15 @@ pub async fn callback(
             .await
             .map_err(|e| {
                 warn!(error = %e, "attach_character_to_account failed");
-                (StatusCode::BAD_REQUEST, "could not attach character").into_response()
+                match e {
+                    AuthError::CharacterOwnerMismatch => {
+                        (StatusCode::CONFLICT, "character belongs to another account")
+                            .into_response()
+                    }
+                    AuthError::Internal(_) => {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                    }
+                }
             })?;
 
             register_account_with_online_poller(&state, account_id).await;
@@ -284,7 +292,15 @@ pub async fn callback(
             .await
             .map_err(|e| {
                 warn!(error = %e, "login_or_register failed");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                match e {
+                    AuthError::CharacterOwnerMismatch => {
+                        (StatusCode::CONFLICT, "character belongs to another account")
+                            .into_response()
+                    }
+                    AuthError::Internal(_) => {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+                    }
+                }
             })?;
 
             register_account_with_online_poller(&state, account_id).await;
