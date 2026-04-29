@@ -3,6 +3,7 @@ mod common;
 use chrono::Utc;
 use erbridge_api::{
     db::account,
+    services::account::request_deletion,
     services::auth::{
         AttachCharacterInput, LoginInput, attach_character_to_account, login_or_register,
     },
@@ -287,6 +288,38 @@ async fn test_reactivation_writes_audit_entry() {
     assert_eq!(rows[0].event_type, "account_reactivated");
     assert_eq!(rows[0].actor_account_id, Some(account_id));
     assert_eq!(rows[0].details["account_id"], account_id.to_string());
+}
+
+// ---------------------------------------------------------------------------
+// account_deletion_requested
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_request_deletion_writes_audit_entry() {
+    let (_pg, pool) = common::setup_db().await;
+    let aes_key = common::test_aes_key();
+
+    let account_id = login_or_register(&pool, &aes_key, login_input(11110, "Leaving Pilot"))
+        .await
+        .unwrap();
+
+    sqlx::query!("DELETE FROM audit_log")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let updated = request_deletion(&pool, account_id).await.unwrap();
+    assert!(
+        updated,
+        "request_deletion should return true for an active account"
+    );
+
+    let rows = fetch_audit(&pool).await;
+    assert_eq!(rows.len(), 1, "expected exactly one audit row");
+    assert_eq!(rows[0].event_type, "account_deletion_requested");
+    assert_eq!(rows[0].actor_account_id, Some(account_id));
+    // Per AuditEvent::AccountDeletionRequested::details(): actor carries the account, details is empty.
+    assert!(rows[0].details.as_object().unwrap().is_empty());
 }
 
 // ---------------------------------------------------------------------------

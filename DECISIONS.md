@@ -1,7 +1,35 @@
 # Architecture Decisions
 
 Decisions that are not obvious from the code and are likely to be revisited
-or questioned in future. See also ADRs referenced inline in `CODEBASE.md`.
+or questioned in future. See also ADRs referenced inline in `CODEBASE_context.md`.
+
+---
+
+## Layering rule: handlers must not call db directly
+
+**Decision:** All request handling must follow a strict three-layer model:
+`handler → service → db`. Handlers call service functions; service functions
+call db functions. Handlers **must not** call `db::*` functions directly.
+
+**Rationale:** Direct handler-to-db calls scatter business logic across the
+handler layer, make it impossible to reuse logic between handlers, and mean
+that invariants (e.g. "banning one character bans the whole account") can be
+silently bypassed by any handler that skips the service layer. The service
+layer is the single place where those invariants are enforced.
+
+**Rule:**
+- Handlers live in `src/handlers/` and deal only with request parsing,
+  auth/permission checks via extractors, and response serialisation.
+- Service functions live in `src/services/` (or `src/service.rs` until
+  extracted) and own all business logic: validation, multi-step transactions,
+  cross-entity invariants.
+- DB functions live in `src/db/` and are pure data access — no business logic.
+- If you find yourself writing `db::something(…)` inside a handler, stop and
+  introduce or extend a service function instead.
+
+**If you are tempted to call db directly from a handler:** ask whether the
+logic should be shared with another handler or whether there is an invariant
+that must be enforced consistently. The answer is almost always yes.
 
 ---
 

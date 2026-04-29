@@ -9,8 +9,6 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    db::acl::find_acls_manageable_by_account,
-    db::acl_member::find_members_by_acl,
     dto::acl::{
         AclListResponse, AclMemberListResponse, AclMemberResponse, AclResponse, AddMemberRequest,
         CreateAclRequest, RenameAclRequest, UpdateMemberRequest,
@@ -18,8 +16,8 @@ use crate::{
     dto::envelope::ApiResponse,
     extractors::AccountId,
     services::acl::{
-        AclError, AddMemberInput, add_member, assert_acl_list_members_permission, create_acl,
-        delete_acl, remove_member, rename_acl, update_member_permission,
+        AclError, AddMemberInput, add_member, create_acl, delete_acl, list_manageable_for_account,
+        list_members as svc_list_members, remove_member, rename_acl, update_member_permission,
     },
     state::AppState,
 };
@@ -32,9 +30,7 @@ pub async fn list_acls(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
 ) -> Result<Json<ApiResponse<AclListResponse>>, AclError> {
-    let acls = find_acls_manageable_by_account(&state.db, account_id)
-        .await
-        .map_err(AclError::Internal)?;
+    let acls = list_manageable_for_account(&state.db, account_id).await?;
 
     Ok(Json(ApiResponse::ok(AclListResponse {
         acls: acls.into_iter().map(AclResponse::from).collect(),
@@ -101,11 +97,7 @@ pub async fn list_members(
     AccountId(account_id): AccountId,
     Path(acl_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<AclMemberListResponse>>, AclError> {
-    assert_acl_list_members_permission(&state.db, acl_id, account_id).await?;
-
-    let members = find_members_by_acl(&state.db, acl_id)
-        .await
-        .map_err(AclError::Internal)?;
+    let members = svc_list_members(&state.db, acl_id, account_id).await?;
 
     Ok(Json(ApiResponse::ok(AclMemberListResponse {
         members: members.into_iter().map(AclMemberResponse::from).collect(),

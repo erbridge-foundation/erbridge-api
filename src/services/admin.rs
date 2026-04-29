@@ -43,7 +43,7 @@ impl IntoResponse for AdminError {
 }
 
 /// Lists every map on the instance, including soft-deleted rows. The admin
-/// list bypasses ACL/ownership filtering by design (see DECISIONS.md).
+/// list bypasses ACL/ownership filtering by design (see DECISIONS_context.md).
 #[instrument(skip(pool), err)]
 pub async fn admin_list_maps(pool: &PgPool) -> Result<Vec<Map>, AdminError> {
     db_map::find_all_maps_admin(pool)
@@ -152,7 +152,7 @@ pub async fn admin_hard_delete_map(
 // ---------------------------------------------------------------------------
 
 /// Lists every ACL on the instance. Members are NOT returned — see
-/// `DECISIONS.md` ("Capability boundaries").
+/// `DECISIONS_context.md` ("Capability boundaries").
 #[instrument(skip(pool), err)]
 pub async fn admin_list_acls(pool: &PgPool) -> Result<Vec<Acl>, AdminError> {
     db_acl::find_all_acls_admin(pool)

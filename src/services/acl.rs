@@ -11,8 +11,8 @@ use uuid::Uuid;
 use crate::{
     audit::{self, AuditEvent},
     db::{
-        acl::{self, Acl},
-        acl_member::{self, AclMember, AclPermission, MemberType},
+        acl::{self, Acl, find_acls_manageable_by_account},
+        acl_member::{self, AclMember, AclPermission, MemberType, find_members_by_acl},
     },
     dto::envelope::ApiResponse,
     esi::{character::get_character_public_info, universe::resolve_names},
@@ -65,6 +65,32 @@ fn validate_permission_for_type(
         return Err(AclError::InvalidPermissionForType(permission.to_string()));
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// ACL queries
+// ---------------------------------------------------------------------------
+
+pub async fn list_manageable_for_account(
+    pool: &PgPool,
+    account_id: Uuid,
+) -> Result<Vec<Acl>, AclError> {
+    find_acls_manageable_by_account(pool, account_id)
+        .await
+        .map_err(AclError::Internal)
+}
+
+/// Asserts manage permission on the ACL and returns all its members in one call.
+pub async fn list_members(
+    pool: &PgPool,
+    acl_id: Uuid,
+    account_id: Uuid,
+) -> Result<Vec<AclMember>, AclError> {
+    let acl = require_acl(pool, acl_id).await?;
+    require_acl_permission(&acl, account_id, pool, Permission::Manage).await?;
+    find_members_by_acl(pool, acl_id)
+        .await
+        .map_err(AclError::Internal)
 }
 
 // ---------------------------------------------------------------------------

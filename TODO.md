@@ -1,6 +1,6 @@
 # Server Admin Role — Implementation TODO
 
-Tracks progress for the server-admin feature described in `DECISIONS.md`
+Tracks progress for the server-admin feature described in `DECISIONS_context.md`
 ("Server admin role: scope and bootstrap").
 
 ## Progress
@@ -24,7 +24,7 @@ Tracks progress for the server-admin feature described in `DECISIONS.md`
 | 15  | Wire `admin_router` into `lib.rs` under `require_active_account` + `require_server_admin`  | [x]    |
 | 16  | Integration tests — admin gating, bootstrap, blocked-character flow, last-admin guard      | [x]    |
 | 17  | `cargo sqlx prepare` + `cargo test` clean                                                  | [x]    |
-| 18  | Update `CODEBASE.md` (routes table, schema, file list)                                     | [x]    |
+| 18  | Update `CODEBASE.md` and `CODEBASE_context.md` (routes table, schema, file list)                                     | [x]    |
 
 ## Notes
 
@@ -41,7 +41,7 @@ Add to `AuditEvent`:
 - `EveCharacterBlocked { eve_character_id, reason }`
 - `EveCharacterUnblocked { eve_character_id }`
 
-Per `DECISIONS.md` audit-log scope rule, all of these are admin/compliance
+Per `DECISIONS_context.md` audit-log scope rule, all of these are admin/compliance
 actions and belong in `audit_log` (not `map_events`).
 
 ### Step 4 — bootstrap

@@ -9,14 +9,14 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    db::api_key::list_account_api_keys,
     dto::{
         account::{ApiKeyCreatedResponse, ApiKeyEntry, ApiKeyListResponse, CreateApiKeyRequest},
         envelope::ApiResponse,
     },
     extractors::AccountId,
     services::account::{
-        create_api_key as svc_create_api_key, revoke_api_key as svc_revoke_api_key,
+        create_api_key as svc_create_api_key, list_api_keys as svc_list_api_keys,
+        revoke_api_key as svc_revoke_api_key,
     },
     state::AppState,
 };
@@ -48,7 +48,7 @@ pub async fn list_api_keys_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
 ) -> Result<Json<ApiResponse<ApiKeyListResponse>>, StatusCode> {
-    let keys = list_account_api_keys(&state.db, account_id)
+    let keys = svc_list_api_keys(&state.db, account_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

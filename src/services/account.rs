@@ -5,7 +5,10 @@ use uuid::Uuid;
 use crate::{
     audit::{self, AuditEvent},
     crypto::{generate_api_key, sha256_hex},
-    db::api_key::{ApiKey, delete_account_api_key, insert_account_api_key},
+    db::{
+        account::request_account_deletion,
+        api_key::{ApiKey, delete_account_api_key, insert_account_api_key, list_account_api_keys},
+    },
 };
 
 /// Returned by `create_api_key`: the persisted row plus the one-time plaintext token.
@@ -39,6 +42,18 @@ pub async fn create_api_key(pool: &PgPool, account_id: Uuid, name: &str) -> Resu
     tx.commit().await.context("commit tx")?;
 
     Ok(CreatedApiKey { key, plaintext })
+}
+
+/// Lists all API keys for the given account.
+pub async fn list_api_keys(pool: &PgPool, account_id: Uuid) -> Result<Vec<ApiKey>> {
+    list_account_api_keys(pool, account_id).await
+}
+
+/// Marks the account as `pending_delete` and writes an audit entry in the same
+/// transaction as the status flip. Returns `Ok(false)` if the account was not
+/// found or already pending deletion.
+pub async fn request_deletion(pool: &PgPool, account_id: Uuid) -> Result<bool> {
+    request_account_deletion(pool, account_id, Some(account_id)).await
 }
 
 /// Revokes an account-scoped API key by id, scoped to the owning account.

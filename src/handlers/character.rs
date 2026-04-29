@@ -11,13 +11,15 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::{
-    db::account::request_account_deletion,
-    db::character::{DeleteCharacterResult, find_characters_by_account},
-    dto::character::{CharacterListResponse, CharacterResponse},
+    db::character::DeleteCharacterResult,
+    dto::character::CharacterListResponse,
     dto::envelope::ApiResponse,
-    esi::universe::resolve_names,
     extractors::{AccountId, SESSION_COOKIE},
-    services::character::{remove_character as svc_remove_character, set_main as svc_set_main},
+    services::account::request_deletion as svc_request_deletion,
+    services::character::{
+        list_for_account as svc_list_for_account, remove_character as svc_remove_character,
+        set_main as svc_set_main,
+    },
     state::AppState,
 };
 
@@ -29,51 +31,20 @@ pub async fn list_characters(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
 ) -> Result<Json<ApiResponse<CharacterListResponse>>, StatusCode> {
-    let characters = find_characters_by_account(&state.db, &state.config.aes_key, account_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %account_id, "failed to list characters");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let characters = svc_list_for_account(
+        &state.db,
+        &state.config.aes_key,
+        &state.http,
+        &state.config.esi_base,
+        account_id,
+    )
+    .await
+    .map_err(|e| {
+        warn!(error = %e, %account_id, "failed to list characters");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-    // Collect unique corp/alliance IDs to resolve in one ESI call.
-    let mut ids: Vec<i64> = characters.iter().map(|c| c.corporation_id).collect();
-    for c in &characters {
-        if let Some(aid) = c.alliance_id {
-            ids.push(aid);
-        }
-    }
-    ids.sort_unstable();
-    ids.dedup();
-
-    let resolved = resolve_names(&state.http, &state.config.esi_base, ids)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %account_id, "failed to resolve corp/alliance names from ESI");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let name_map: std::collections::HashMap<i64, String> =
-        resolved.into_iter().map(|r| (r.id, r.name)).collect();
-    let name_for = |id: i64| -> Option<String> { name_map.get(&id).cloned() };
-
-    let items = characters
-        .into_iter()
-        .map(|c| CharacterResponse {
-            id: c.id,
-            eve_character_id: c.eve_character_id,
-            name: c.name,
-            corporation_id: c.corporation_id,
-            corporation_name: name_for(c.corporation_id).unwrap_or_default(),
-            alliance_id: c.alliance_id,
-            alliance_name: c.alliance_id.and_then(name_for),
-            is_main: c.is_main,
-        })
-        .collect();
-
-    Ok(Json(ApiResponse::ok(CharacterListResponse {
-        characters: items,
-    })))
+    Ok(Json(ApiResponse::ok(CharacterListResponse { characters })))
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +102,7 @@ pub async fn delete_account(
     AccountId(account_id): AccountId,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let updated = request_account_deletion(&state.db, account_id, Some(account_id))
+    let updated = svc_request_deletion(&state.db, account_id)
         .await
         .map_err(|e| {
             warn!(error = %e, %account_id, "failed to request account deletion");

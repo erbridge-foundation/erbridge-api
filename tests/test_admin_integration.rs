@@ -262,7 +262,7 @@ async fn block_character_bans_owning_account_via_middleware() {
 
     // Sanity: user can hit an authenticated endpoint before the block.
     server.add_cookie(auth_cookie(user, &jwt_key));
-    let resp = server.get("/api/v1/me").await;
+    let resp = server.get("/api/v1/acls").await;
     assert_eq!(resp.status_code(), StatusCode::OK);
 
     // Admin blocks the user's EVE character.
@@ -277,7 +277,7 @@ async fn block_character_bans_owning_account_via_middleware() {
     // User's session is now rejected by `require_active_account`.
     server.clear_cookies();
     server.add_cookie(auth_cookie(user, &jwt_key));
-    let resp = server.get("/api/v1/me").expect_failure().await;
+    let resp = server.get("/api/v1/acls").expect_failure().await;
     assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
 
     // Audit event recorded.
@@ -341,7 +341,7 @@ async fn unblock_character_restores_account_access() {
     // Confirm user is locked out.
     server.clear_cookies();
     server.add_cookie(auth_cookie(user, &jwt_key));
-    let resp = server.get("/api/v1/me").expect_failure().await;
+    let resp = server.get("/api/v1/acls").expect_failure().await;
     assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
 
     // Admin unblocks.
@@ -355,7 +355,7 @@ async fn unblock_character_restores_account_access() {
     // User can hit endpoints again.
     server.clear_cookies();
     server.add_cookie(auth_cookie(user, &jwt_key));
-    let resp = server.get("/api/v1/me").await;
+    let resp = server.get("/api/v1/acls").await;
     assert_eq!(resp.status_code(), StatusCode::OK);
 }
 

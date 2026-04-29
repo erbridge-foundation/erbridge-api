@@ -367,7 +367,7 @@ async fn auth_with_api_key_succeeds() {
 
     // Now use Bearer token with no cookie.
     let resp = server
-        .get("/api/v1/me")
+        .get("/api/v1/acls")
         .add_header(
             axum_test::http::header::AUTHORIZATION,
             format!("Bearer {api_key}")
@@ -461,7 +461,7 @@ async fn auth_with_other_keys_still_works_after_revoke() {
 
     // Key B should still work.
     let resp_b = server
-        .get("/api/v1/me")
+        .get("/api/v1/acls")
         .add_header(
             axum_test::http::header::AUTHORIZATION,
             format!("Bearer {}", key_b.data.api_key)

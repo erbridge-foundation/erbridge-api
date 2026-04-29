@@ -43,7 +43,7 @@ pub struct ChangeMapOwnerRequest {
     pub new_owner_account_id: Uuid,
 }
 
-/// Admin ACL view. Deliberately omits members — DECISIONS.md "Capability
+/// Admin ACL view. Deliberately omits members — DECISIONS_context.md "Capability
 /// boundaries" forbids exposing ACL members to the admin role.
 #[derive(Debug, Serialize)]
 pub struct AdminAclResponse {

@@ -2,9 +2,9 @@
 
 ## Start here before exploring
 
-Read `CODEBASE.md` for a complete reference of the project structure, API routes, database schema,
+Read `CODEBASE_context.md` for a complete reference of the project structure, API routes, database schema,
 authentication flow, key patterns, and configuration. Do not spend tokens re-exploring the source
-unless you need the exact current code for a specific detail — `CODEBASE.md` covers everything at
+unless you need the exact current code for a specific detail — `CODEBASE_context.md` covers everything at
 the architectural level.
 
 ## Directories to ignore
@@ -14,7 +14,7 @@ It contains reference/scratch material that is not part of the active codebase.
 
 ## Architecture decisions
 
-Read `DECISIONS.md` for decisions that are not obvious from the code —
+Read `DECISIONS_context.md` for decisions that are not obvious from the code —
 particularly the `audit_log` scope rule (admin/compliance actions only; map
 mutations go to `map_events` instead).
 
