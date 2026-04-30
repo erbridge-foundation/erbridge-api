@@ -148,7 +148,10 @@ jobs:
           until curl -sf http://localhost:8080/api/health; do sleep 1; done
 
       - name: Install hurl
-        uses: orhun/setup-hurl@main
+        run: |
+          HURL_VERSION=$(curl -sf https://api.github.com/repos/Orange-OpenSource/hurl/releases/latest | jq -r '.tag_name')
+          curl -fsSL "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb" -o hurl.deb
+          sudo dpkg -i hurl.deb
 
       - name: Run hurl tests
         run: >-
