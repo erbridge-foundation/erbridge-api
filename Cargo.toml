@@ -58,6 +58,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 validator = { version = "0.20", features = ["derive"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+[features]
+default = []
+dev-seed = []
+
 [dev-dependencies]
 axum-test = "20"
 bytes = "1"
