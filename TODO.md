@@ -11,7 +11,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[x]`  | Haiku 4.5  | low    |
 | 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[x]`  | Sonnet 4.6 | low    |
 | 5  | Verify release build excludes `dev_seed` symbols                            | `[x]`  | Haiku 4.5  | low    |
-| 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[~]`  | Sonnet 4.6 | high   |
+| 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[x]`  | Sonnet 4.6 | high   |
 | 7  | Add `hurl` job to `.github/workflows/build.yml`                             | `[ ]`  | Sonnet 4.6 | medium |
 | 8  | End-to-end CI green run on a feature branch                                 | `[ ]`  | Sonnet 4.6 | low    |
 
@@ -125,7 +125,7 @@ strings target/release/erbridge-api | grep -i dev_seed || echo "OK: no dev_seed 
 
 ---
 
-## Step 6 — Author hurl test files (in progress)
+## Step 6 — Author hurl test files
 
 **Files:** `hurl/accounts.hurl` (update), plus new `hurl/api-keys.hurl`, `hurl/acls.hurl`, `hurl/maps.hurl`, `hurl/admin.hurl`, `hurl/sde.hurl`.
 
@@ -142,6 +142,8 @@ Each file uses variables `{{base_url}}`, `{{admin_api_key}}`, and `{{user_api_ke
 **Skip (cannot work without live ESI):** `POST /characters/add`, character token refresh, location/online poller-driven endpoints.
 
 **Acceptance criteria:** `hurl --test --variable admin_api_key=$ADMIN --variable user_api_key=$USER --variable base_url=http://localhost:8080 hurl/*.hurl` is fully green locally.
+
+**Outcome:** Created `hurl/accounts.hurl` (updated), `hurl/api-keys.hurl`, `hurl/acls.hurl`, `hurl/maps.hurl`, and `hurl/admin.hurl`. All 5 files, 58 requests pass cleanly in two consecutive runs. `sde.hurl` was omitted — no `GET /sde/solar-systems/...` routes exist in the router. The tests are idempotent via a DB reset on each run, handled by `scripts/hurl-test.sh` (gitignored). Added a hurl test suite section to `README.md` with a destructive-DB warning, usage instructions, and an coverage table. ACL member-add uses corp eve_entity_id=1000001 (name-resolve gracefully falls back) and eve_character_id=90000001 (already in DB from seed). Block/unblock test uses seed character 90000002 and immediately unblocks it.
 
 ---
 
