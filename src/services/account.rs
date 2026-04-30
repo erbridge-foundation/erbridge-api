@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -20,13 +21,25 @@ pub struct CreatedApiKey {
 /// Generates a new API key, hashes it, persists the row, and audits the creation —
 /// all in a single transaction. The plaintext is returned to the caller and never
 /// stored or logged.
-pub async fn create_api_key(pool: &PgPool, account_id: Uuid, name: &str) -> Result<CreatedApiKey> {
+///
+/// `expires_days`: 0 or None means no expiry (unlimited).
+pub async fn create_api_key(
+    pool: &PgPool,
+    account_id: Uuid,
+    name: &str,
+    expires_days: Option<u32>,
+) -> Result<CreatedApiKey> {
     let plaintext = generate_api_key();
     let key_hash = sha256_hex(plaintext.as_bytes());
 
+    let expires_at: Option<DateTime<Utc>> = match expires_days {
+        Some(d) if d > 0 => Some(Utc::now() + chrono::Duration::days(d as i64)),
+        _ => None,
+    };
+
     let mut tx = pool.begin().await.context("begin tx")?;
 
-    let key = insert_account_api_key(&mut tx, account_id, name, &key_hash).await?;
+    let key = insert_account_api_key(&mut tx, account_id, name, &key_hash, expires_at).await?;
 
     audit::record_in_tx(
         &mut tx,
