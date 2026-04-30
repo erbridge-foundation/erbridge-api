@@ -168,7 +168,8 @@ jobs:
   push:
     name: Push
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, hurl]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
