@@ -11,7 +11,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[x]`  | Haiku 4.5  | low    |
 | 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[x]`  | Sonnet 4.6 | low    |
 | 5  | Verify release build excludes `dev_seed` symbols                            | `[x]`  | Haiku 4.5  | low    |
-| 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[ ]`  | Sonnet 4.6 | high   |
+| 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[~]`  | Sonnet 4.6 | high   |
 | 7  | Add `hurl` job to `.github/workflows/build.yml`                             | `[ ]`  | Sonnet 4.6 | medium |
 | 8  | End-to-end CI green run on a feature branch                                 | `[ ]`  | Sonnet 4.6 | low    |
 
@@ -125,7 +125,7 @@ strings target/release/erbridge-api | grep -i dev_seed || echo "OK: no dev_seed 
 
 ---
 
-## Step 6 — Author hurl test files
+## Step 6 — Author hurl test files (in progress)
 
 **Files:** `hurl/accounts.hurl` (update), plus new `hurl/api-keys.hurl`, `hurl/acls.hurl`, `hurl/maps.hurl`, `hurl/admin.hurl`, `hurl/sde.hurl`.
 
