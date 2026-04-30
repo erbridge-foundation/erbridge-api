@@ -10,7 +10,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | 2  | Implement `src/dev_seed.rs` module                                          | `[x]`  | Sonnet 4.6 | medium |
 | 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[x]`  | Haiku 4.5  | low    |
 | 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[x]`  | Sonnet 4.6 | low    |
-| 5  | Verify release build excludes `dev_seed` symbols                            | `[ ]`  | Haiku 4.5  | low    |
+| 5  | Verify release build excludes `dev_seed` symbols                            | `[x]`  | Haiku 4.5  | low    |
 | 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[ ]`  | Sonnet 4.6 | high   |
 | 7  | Add `hurl` job to `.github/workflows/build.yml`                             | `[ ]`  | Sonnet 4.6 | medium |
 | 8  | End-to-end CI green run on a feature branch                                 | `[ ]`  | Sonnet 4.6 | low    |
@@ -120,6 +120,8 @@ strings target/release/erbridge-api | grep -i dev_seed || echo "OK: no dev_seed 
 ```
 
 **Acceptance criteria:** grep returns no matches; the `OK:` line prints.
+
+**Outcome:** Built release binary with `cargo build --release` (37.07s). Verified no `dev_seed` symbols in the binary: `strings target/release/erbridge-api | grep -i dev_seed` returned no matches and printed `OK: no dev_seed symbols`. The feature flag successfully prevents dev-seed code from being compiled into production binaries.
 
 ---
 
