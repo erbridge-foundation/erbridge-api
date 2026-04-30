@@ -8,7 +8,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 |----|-----------------------------------------------------------------------------|--------|------------|--------|
 | 1  | Add `dev-seed` cargo feature to `Cargo.toml`                                | `[x]`  | Haiku 4.5  | low    |
 | 2  | Implement `src/dev_seed.rs` module                                          | `[x]`  | Sonnet 4.6 | medium |
-| 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[ ]`  | Haiku 4.5  | low    |
+| 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[x]`  | Haiku 4.5  | low    |
 | 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[ ]`  | Sonnet 4.6 | low    |
 | 5  | Verify release build excludes `dev_seed` symbols                            | `[ ]`  | Haiku 4.5  | low    |
 | 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[ ]`  | Sonnet 4.6 | high   |
@@ -78,6 +78,8 @@ Model rationale: Haiku 4.5 for mechanical, single-file edits. Sonnet 4.6 for cod
 **Acceptance criteria:**
 - Both `cargo build` and `cargo build --features dev-seed` succeed.
 - No new warnings.
+
+**Outcome:** Added `#[cfg(feature = "dev-seed")]` gated call to `dev_seed::run_if_requested(&pool, &config.aes_key)` in `src/main.rs` right after migrations are applied. The module declaration was already present in `src/lib.rs` from step 2. Both `cargo build` and `cargo build --features dev-seed` compile successfully with no warnings.
 
 ---
 

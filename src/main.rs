@@ -38,6 +38,9 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     info!("migrations applied");
 
+    #[cfg(feature = "dev-seed")]
+    erbridge_api::dev_seed::run_if_requested(&pool, &config.aes_key).await?;
+
     let http = Client::builder().timeout(Duration::from_secs(10)).build()?;
 
     erbridge_api::services::sde_solar_system::load_sde_if_needed(&pool, &http).await?;

@@ -45,13 +45,10 @@ pub async fn run_if_requested(pool: &PgPool, aes_key: &[u8; 32]) -> anyhow::Resu
 
     let mut tx = pool.begin().await.context("failed to begin transaction")?;
 
-    let existing = sqlx::query_scalar!(
-        "SELECT id FROM api_key WHERE key_hash = $1",
-        admin_hash
-    )
-    .fetch_optional(&mut *tx)
-    .await
-    .context("failed to check for existing seed")?;
+    let existing = sqlx::query_scalar!("SELECT id FROM api_key WHERE key_hash = $1", admin_hash)
+        .fetch_optional(&mut *tx)
+        .await
+        .context("failed to check for existing seed")?;
 
     if existing.is_some() {
         tracing::info!("already seeded — skipping");
@@ -81,7 +78,14 @@ pub async fn run_if_requested(pool: &PgPool, aes_key: &[u8; 32]) -> anyhow::Resu
     )
     .await?;
 
-    db::api_key::insert_account_api_key(&mut tx, admin_account.id, "ci-seed-admin", &admin_hash, None).await?;
+    db::api_key::insert_account_api_key(
+        &mut tx,
+        admin_account.id,
+        "ci-seed-admin",
+        &admin_hash,
+        None,
+    )
+    .await?;
 
     let user_account = db::account::insert_account(&mut tx).await?;
     db::account::set_server_admin(&mut tx, user_account.id, false).await?;
@@ -104,9 +108,12 @@ pub async fn run_if_requested(pool: &PgPool, aes_key: &[u8; 32]) -> anyhow::Resu
     )
     .await?;
 
-    db::api_key::insert_account_api_key(&mut tx, user_account.id, "ci-seed-user", &user_hash, None).await?;
+    db::api_key::insert_account_api_key(&mut tx, user_account.id, "ci-seed-user", &user_hash, None)
+        .await?;
 
-    tx.commit().await.context("failed to commit seed transaction")?;
+    tx.commit()
+        .await
+        .context("failed to commit seed transaction")?;
 
     tracing::info!(
         admin_account_id = %admin_account.id,
