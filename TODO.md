@@ -13,7 +13,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | 5  | Verify release build excludes `dev_seed` symbols                            | `[x]`  | Haiku 4.5  | low    |
 | 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[x]`  | Sonnet 4.6 | high   |
 | 7  | Add `hurl` job to `.github/workflows/build.yml`                             | `[x]`  | Sonnet 4.6 | medium |
-| 8  | End-to-end CI green run on a feature branch                                 | `[ ]`  | Sonnet 4.6 | low    |
+| 8  | End-to-end CI green run on a feature branch                                 | `[~]`  | Sonnet 4.6 | low    |
 
 Model rationale: Haiku 4.5 for mechanical, single-file edits. Sonnet 4.6 for code authoring or judgement-heavy steps. Opus is not recommended for any individual step here — scope per step is bounded.
 
@@ -175,7 +175,7 @@ Each file uses variables `{{base_url}}`, `{{admin_api_key}}`, and `{{user_api_ke
 
 ---
 
-## Step 8 — End-to-end CI green
+## Step 8 — End-to-end CI green (in progress)
 
 Open a PR against `main` and confirm the new `hurl` job is green and the existing `test` and `push` jobs are unaffected.
 
