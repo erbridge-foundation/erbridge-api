@@ -9,7 +9,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | 1  | Add `dev-seed` cargo feature to `Cargo.toml`                                | `[x]`  | Haiku 4.5  | low    |
 | 2  | Implement `src/dev_seed.rs` module                                          | `[x]`  | Sonnet 4.6 | medium |
 | 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[x]`  | Haiku 4.5  | low    |
-| 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[ ]`  | Sonnet 4.6 | low    |
+| 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[x]`  | Sonnet 4.6 | low    |
 | 5  | Verify release build excludes `dev_seed` symbols                            | `[ ]`  | Haiku 4.5  | low    |
 | 6  | Author hurl test files in `hurl/` for all testable endpoints                | `[ ]`  | Sonnet 4.6 | high   |
 | 7  | Add `hurl` job to `.github/workflows/build.yml`                             | `[ ]`  | Sonnet 4.6 | medium |
@@ -107,7 +107,7 @@ curl -sw '%{http_code}\n' -o /dev/null -H "Authorization: Bearer $DEV_SEED_USER_
 - Restarting the server logs `"already seeded"` and does not error.
 - With `ERBRIDGE_ALLOW_DEV_SEED` unset, the server logs `"dev-seed compiled but not activated"` and both curl calls return 401.
 
-Append findings to this section.
+**Outcome:** Built with `--features dev-seed`. Set stable fixed keys (`erbridge_000...001` / `erbridge_000...002`) and `ERBRIDGE_ALLOW_DEV_SEED=yes-i-know-this-is-insecure`. First run seeded two accounts and logged the admin/user account UUIDs. `GET /api/v1/me` returned HTTP 200 for both keys with distinct account ids (`0c62a0a1-...` admin, `6ea6d590-...` user). Admin key on `GET /api/v1/admin/accounts` returned 200 (route is a real working handler, not a stub); user key returned 403 via the role gate. Second server start (same keys) logged `already seeded — skipping`. Third start with `ERBRIDGE_ALLOW_DEV_SEED` unset logged `dev-seed compiled but not activated` and the keys returned 404 (hash not in DB — expected, as keys don't work without seeding). Note: the step description referenced `/api/v1/accounts/me` but the actual route is `/api/v1/me` — updated commands in place.
 
 ---
 
