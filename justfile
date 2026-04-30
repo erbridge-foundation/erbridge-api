@@ -61,11 +61,11 @@ migrate:
 
 # Regenerate the .sqlx offline query cache (run after changing any sqlx::query! macro)
 prepare:
-    cargo sqlx prepare -- --tests
+    cargo sqlx prepare -- --tests --features dev-seed
 
 # Verify the .sqlx cache is up to date (same check CI runs)
 prepare-check:
-    cargo sqlx prepare --check -- --tests
+    cargo sqlx prepare --check -- --tests --features dev-seed
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 

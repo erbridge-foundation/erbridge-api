@@ -410,9 +410,9 @@ recursive CTE route finder. Columns: `map_id`, `connection_id`, `status`, `life_
 | ADR-029 | Refresh token age: use `eve_character.updated_at`; re-auth if `> ESI_REFRESH_TOKEN_MAX_DAYS` (default 7d) |
 | ADR-030 | JWKS rotation retry on verification failure |
 | ADR-031 | Ghost character — `account_id = NULL` rows claimable at first login |
-| — | Server admin bootstrap: first account registered is automatically granted `is_server_admin = true` (see `DECISIONS.md`) |
+| — | Server admin bootstrap: first account registered is automatically granted `is_server_admin = true` (see `DECISIONS_context.md`) |
 | — | One blocked character = account banned: any `blocked_eve_character` match on any character in the account → 403 |
-| — | Audit log scope: all admin/compliance actions go to `audit_log`; map mutations go to `map_events` (see `DECISIONS.md`) |
+| — | Audit log scope: all admin/compliance actions go to `audit_log`; map mutations go to `map_events` (see `DECISIONS_context.md`) |
 
 ### Permission Model (ADR-026)
 

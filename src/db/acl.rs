@@ -144,7 +144,7 @@ pub async fn set_acl_pending_delete(
 
 /// Returns every ACL on the instance — for the admin list endpoint.
 /// Members are intentionally NOT joined; the admin role does not have member
-/// visibility (DECISIONS.md "Capability boundaries").
+/// visibility (DECISIONS_context.md "Capability boundaries").
 pub async fn find_all_acls_admin(pool: &PgPool) -> Result<Vec<Acl>> {
     sqlx::query_as!(
         Acl,

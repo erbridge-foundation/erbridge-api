@@ -126,6 +126,68 @@ The database schema is applied automatically on first startup.
 
 ---
 
+## Integration tests (hurl)
+
+The `hurl/` directory contains HTTP integration tests that run against a live server backed by a real database. They cover accounts, API-key lifecycle, ACL CRUD, map/connection/signature CRUD, and admin routes.
+
+> **⚠️ These tests wipe the database on every run.**
+> They are designed for CI and for local development against a disposable database.
+> Never point them at a database that holds real data.
+
+### Running locally
+
+```sh
+./scripts/hurl-test.sh
+```
+
+The script:
+1. Drops and recreates all tables in the local database (using `DATABASE_URL` from `.env`).
+2. Re-runs migrations via `sqlx migrate run`.
+3. Builds the binary with `--features dev-seed`.
+4. Starts the server (which seeds two test accounts on boot).
+5. Runs all `hurl/*.hurl` files with the dev-seed API keys as variables.
+6. Stops the server on exit.
+
+### Variables
+
+The hurl files use three variables that the script supplies automatically:
+
+| Variable | Description |
+|---|---|
+| `base_url` | Server base URL (default `http://localhost:8080`) |
+| `admin_api_key` | API key for the seeded admin account |
+| `user_api_key` | API key for the seeded non-admin account |
+
+You can override the server URL:
+
+```sh
+BASE_URL=http://localhost:9090 ./scripts/hurl-test.sh
+```
+
+Or run hurl directly against an already-running server (DB already seeded):
+
+```sh
+hurl --test \
+  --variable base_url=http://localhost:8080 \
+  --variable admin_api_key=erbridge_<32hex> \
+  --variable user_api_key=erbridge_<32hex> \
+  hurl/*.hurl
+```
+
+### What is and isn't tested
+
+| Covered | Not covered (requires live ESI) |
+|---|---|
+| Health check | `POST /auth/callback` (OAuth flow) |
+| Account/me + character list | ESI token refresh |
+| API key create/list/revoke/auth | Online & location poller endpoints |
+| ACL CRUD + member add/update/remove | |
+| Map CRUD + connections/signatures | |
+| Route finding | |
+| Admin routes (auth wiring + role gate) | |
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and contribution guidelines.

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ak.account_id\n        FROM api_key ak\n        JOIN account a ON a.id = ak.account_id\n        WHERE ak.key_hash = $1\n          AND ak.scope = 'account'\n          AND a.status = 'active'\n          AND (ak.expires_at IS NULL OR ak.expires_at > now())\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "dd36a8f02be5cdcdad2c67ac8882f7e3669e11cc894b9d3a75ec66c66d32ef01"
+}

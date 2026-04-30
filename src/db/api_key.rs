@@ -17,6 +17,7 @@ pub struct ApiKey {
     pub scope: ApiKeyScope,
     pub account_id: Option<Uuid>,
     pub name: String,
+    pub expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -25,6 +26,7 @@ struct ApiKeyRow {
     scope: String,
     account_id: Option<Uuid>,
     name: String,
+    expires_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
 
@@ -40,6 +42,7 @@ impl TryFrom<ApiKeyRow> for ApiKey {
                 .map_err(|_| anyhow!("invalid api key scope in db: {}", row.scope))?,
             account_id: row.account_id,
             name: row.name,
+            expires_at: row.expires_at,
             created_at: row.created_at,
         })
     }
@@ -51,17 +54,19 @@ pub async fn insert_account_api_key(
     account_id: Uuid,
     name: &str,
     key_hash: &str,
+    expires_at: Option<DateTime<Utc>>,
 ) -> Result<ApiKey> {
     sqlx::query_as!(
         ApiKeyRow,
         r#"
-        INSERT INTO api_key (scope, account_id, name, key_hash)
-        VALUES ('account', $1, $2, $3)
-        RETURNING id, scope, account_id, name, created_at
+        INSERT INTO api_key (scope, account_id, name, key_hash, expires_at)
+        VALUES ('account', $1, $2, $3, $4)
+        RETURNING id, scope, account_id, name, expires_at, created_at
         "#,
         account_id,
         name,
         key_hash,
+        expires_at,
     )
     .fetch_one(&mut **tx)
     .await
@@ -74,7 +79,7 @@ pub async fn list_account_api_keys(pool: &PgPool, account_id: Uuid) -> Result<Ve
     sqlx::query_as!(
         ApiKeyRow,
         r#"
-        SELECT id, scope, account_id, name, created_at
+        SELECT id, scope, account_id, name, expires_at, created_at
         FROM api_key
         WHERE scope = 'account'
           AND account_id = $1
@@ -112,7 +117,8 @@ pub async fn delete_account_api_key(
 }
 
 /// Looks up the account_id for a given key hash on an account-scoped key,
-/// but only if the account is active. Returns None if not found or inactive.
+/// but only if the account is active and the key has not expired.
+/// Returns None if not found, inactive, or expired.
 pub async fn find_account_id_by_key_hash(pool: &PgPool, key_hash: &str) -> Result<Option<Uuid>> {
     sqlx::query_scalar!(
         r#"
@@ -122,6 +128,7 @@ pub async fn find_account_id_by_key_hash(pool: &PgPool, key_hash: &str) -> Resul
         WHERE ak.key_hash = $1
           AND ak.scope = 'account'
           AND a.status = 'active'
+          AND (ak.expires_at IS NULL OR ak.expires_at > now())
         "#,
         key_hash,
     )

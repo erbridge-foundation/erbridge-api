@@ -50,7 +50,7 @@ impl TryFrom<AccountRow> for Account {
 }
 
 /// Inserts a new account, atomically promoting it to server admin if it is the
-/// first account on the instance. See `DECISIONS.md` ("Server admin role:
+/// first account on the instance. See `DECISIONS_context.md` ("Server admin role:
 /// scope and bootstrap"). Two registrations racing on a brand-new instance
 /// could both come back as admin — that's acceptable; revoke via the admin API.
 pub async fn insert_account(tx: &mut Transaction<'_, Postgres>) -> Result<Account> {

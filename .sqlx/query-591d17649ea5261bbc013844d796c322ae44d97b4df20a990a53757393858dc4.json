@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO api_key (scope, account_id, name, key_hash)\n        VALUES ('account', $1, $2, $3)\n        RETURNING id, scope, account_id, name, created_at\n        ",
+  "query": "\n        INSERT INTO api_key (scope, account_id, name, key_hash, expires_at)\n        VALUES ('account', $1, $2, $3, $4)\n        RETURNING id, scope, account_id, name, expires_at, created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -25,6 +25,11 @@
       },
       {
         "ordinal": 4,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamptz"
       }
@@ -33,7 +38,8 @@
       "Left": [
         "Uuid",
         "Text",
-        "Text"
+        "Text",
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -41,8 +47,9 @@
       false,
       true,
       false,
+      true,
       false
     ]
   },
-  "hash": "6944db048d6b7e606d9e4be7ba62b28c072b61aceb5250648404d3b54bf5e0bc"
+  "hash": "591d17649ea5261bbc013844d796c322ae44d97b4df20a990a53757393858dc4"
 }

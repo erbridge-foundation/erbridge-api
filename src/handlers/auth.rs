@@ -16,14 +16,15 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    db::character::{find_characters_by_account, find_pollable_character_ids_for_account},
     dto::auth::{AuthMode, MeCharacter, MeResponse, SessionClaims, StateClaims},
     dto::envelope::ApiResponse,
     esi::{character::get_character_public_info, jwks::parse_character_id, jwks::verify_eve_jwt},
     extractors::{AccountId, SESSION_COOKIE},
     services::auth::{
-        AttachCharacterInput, AuthError, LoginInput, attach_character_to_account, login_or_register,
+        AttachCharacterInput, AuthError, LoginInput, attach_character_to_account,
+        ensure_account_not_banned, ensure_eve_character_not_blocked, login_or_register,
     },
+    services::character::list_pollable_ids,
     state::AppState,
 };
 
@@ -217,19 +218,21 @@ pub async fn callback(
     })?;
 
     // --- Reject blocked EVE characters before any account/character work ---
-    let is_blocked = crate::db::account::is_eve_character_blocked(&state.db, eve_character_id)
+    ensure_eve_character_not_blocked(&state.db, eve_character_id)
         .await
-        .map_err(|e| {
-            warn!(error = %e, eve_character_id, "failed to check blocked_eve_character");
-            err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+        .map_err(|e| match e {
+            AuthError::EveCharacterBlocked => {
+                warn!(
+                    eve_character_id,
+                    "rejected login/add for blocked eve character"
+                );
+                err(StatusCode::FORBIDDEN, "eve character is blocked")
+            }
+            _ => {
+                warn!(error = %e, eve_character_id, "failed to check blocked_eve_character");
+                err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+            }
         })?;
-    if is_blocked {
-        warn!(
-            eve_character_id,
-            "rejected login/add for blocked eve character"
-        );
-        return Err(err(StatusCode::FORBIDDEN, "eve character is blocked"));
-    }
 
     // --- Fetch corp/alliance from ESI ---
     let public_info =
@@ -252,16 +255,18 @@ pub async fn callback(
 
             // One ban = account banned. If any character already on the account
             // is blocked, refuse to attach more characters.
-            let banned = crate::db::account::account_has_blocked_character(&state.db, account_id)
+            ensure_account_not_banned(&state.db, account_id)
                 .await
-                .map_err(|e| {
-                    warn!(error = %e, %account_id, "failed to check account_has_blocked_character");
-                    err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                .map_err(|e| match e {
+                    AuthError::AccountBanned => {
+                        warn!(%account_id, eve_character_id, "rejected add-character for banned account");
+                        err(StatusCode::FORBIDDEN, "account is blocked")
+                    }
+                    _ => {
+                        warn!(error = %e, %account_id, "failed to check account_has_blocked_character");
+                        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                    }
                 })?;
-            if banned {
-                warn!(%account_id, eve_character_id, "rejected add-character for banned account");
-                return Err(err(StatusCode::FORBIDDEN, "account is blocked"));
-            }
 
             attach_character_to_account(
                 &state.db,
@@ -285,9 +290,7 @@ pub async fn callback(
                     AuthError::CharacterOwnerMismatch => {
                         err(StatusCode::CONFLICT, "character belongs to another account")
                     }
-                    AuthError::Internal(_) => {
-                        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
-                    }
+                    _ => err(StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
                 }
             })?;
 
@@ -325,24 +328,24 @@ pub async fn callback(
                     AuthError::CharacterOwnerMismatch => {
                         err(StatusCode::CONFLICT, "character belongs to another account")
                     }
-                    AuthError::Internal(_) => {
-                        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
-                    }
+                    _ => err(StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
                 }
             })?;
 
             // One ban = account banned. Reject login via an unblocked alt of a
             // banned account before issuing a session cookie.
-            let banned = crate::db::account::account_has_blocked_character(&state.db, account_id)
+            ensure_account_not_banned(&state.db, account_id)
                 .await
-                .map_err(|e| {
-                    warn!(error = %e, %account_id, "failed to check account_has_blocked_character");
-                    err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                .map_err(|e| match e {
+                    AuthError::AccountBanned => {
+                        warn!(%account_id, eve_character_id, "rejected login for banned account (alt of blocked character)");
+                        err(StatusCode::FORBIDDEN, "account is blocked")
+                    }
+                    _ => {
+                        warn!(error = %e, %account_id, "failed to check account_has_blocked_character");
+                        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                    }
                 })?;
-            if banned {
-                warn!(%account_id, eve_character_id, "rejected login for banned account (alt of blocked character)");
-                return Err(err(StatusCode::FORBIDDEN, "account is blocked"));
-            }
 
             register_account_with_online_poller(&state, account_id).await;
 
@@ -361,7 +364,7 @@ pub async fn callback(
 /// online poller. Failures are non-fatal — the poller will pick them up on its
 /// next DB scan anyway.
 async fn register_account_with_online_poller(state: &AppState, account_id: Uuid) {
-    match find_pollable_character_ids_for_account(&state.db, account_id).await {
+    match list_pollable_ids(&state.db, account_id).await {
         Ok(ids) if !ids.is_empty() => {
             let tx = state
                 .online_poll_tx
@@ -416,12 +419,18 @@ pub async fn me(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
 ) -> Result<Json<ApiResponse<MeResponse>>, StatusCode> {
-    let characters = find_characters_by_account(&state.db, &state.config.aes_key, account_id)
-        .await
-        .map_err(|e| {
-            warn!(error = %e, %account_id, "failed to fetch characters");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let characters = crate::services::character::list_for_account(
+        &state.db,
+        &state.config.aes_key,
+        &state.http,
+        &state.config.esi_base,
+        account_id,
+    )
+    .await
+    .map_err(|e| {
+        warn!(error = %e, %account_id, "failed to fetch characters");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let me_characters: Vec<MeCharacter> = characters
         .iter()

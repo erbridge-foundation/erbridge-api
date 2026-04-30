@@ -5,18 +5,19 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
+use tracing::debug;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    db::api_key::list_account_api_keys,
     dto::{
         account::{ApiKeyCreatedResponse, ApiKeyEntry, ApiKeyListResponse, CreateApiKeyRequest},
         envelope::ApiResponse,
     },
     extractors::AccountId,
     services::account::{
-        create_api_key as svc_create_api_key, revoke_api_key as svc_revoke_api_key,
+        create_api_key as svc_create_api_key, list_api_keys as svc_list_api_keys,
+        revoke_api_key as svc_revoke_api_key,
     },
     state::AppState,
 };
@@ -29,7 +30,12 @@ pub async fn create_api_key(
     body.validate()
         .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
 
-    let created = svc_create_api_key(&state.db, account_id, &body.name)
+    debug!(
+        "received API create request for account {} with name {}",
+        account_id, &body.name
+    );
+
+    let created = svc_create_api_key(&state.db, account_id, &body.name, body.expires_days)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -39,6 +45,7 @@ pub async fn create_api_key(
             id: created.key.id,
             name: created.key.name,
             api_key: created.plaintext,
+            expires_at: created.key.expires_at,
             created_at: created.key.created_at,
         })),
     ))
@@ -48,7 +55,7 @@ pub async fn list_api_keys_handler(
     State(state): State<Arc<AppState>>,
     AccountId(account_id): AccountId,
 ) -> Result<Json<ApiResponse<ApiKeyListResponse>>, StatusCode> {
-    let keys = list_account_api_keys(&state.db, account_id)
+    let keys = svc_list_api_keys(&state.db, account_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -57,6 +64,7 @@ pub async fn list_api_keys_handler(
         .map(|k| ApiKeyEntry {
             id: k.id,
             name: k.name,
+            expires_at: k.expires_at,
             created_at: k.created_at,
         })
         .collect();

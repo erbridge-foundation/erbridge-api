@@ -2,7 +2,7 @@ mod common;
 
 use axum_test::TestServer;
 use axum_test::http::StatusCode;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use cookie::Cookie;
 use erbridge_api::services::auth::{LoginInput, login_or_register};
 use uuid::Uuid;
@@ -54,6 +54,7 @@ struct CreateKeyData {
     id: String,
     name: String,
     api_key: String,
+    expires_at: Option<DateTime<Utc>>,
     #[allow(dead_code)]
     created_at: String,
 }
@@ -70,6 +71,7 @@ struct ListKeysData {
 struct KeyEntry {
     id: String,
     name: String,
+    expires_at: Option<DateTime<Utc>>,
     #[allow(dead_code)]
     created_at: String,
 }
@@ -367,7 +369,7 @@ async fn auth_with_api_key_succeeds() {
 
     // Now use Bearer token with no cookie.
     let resp = server
-        .get("/api/v1/me")
+        .get("/api/v1/acls")
         .add_header(
             axum_test::http::header::AUTHORIZATION,
             format!("Bearer {api_key}")
@@ -461,7 +463,7 @@ async fn auth_with_other_keys_still_works_after_revoke() {
 
     // Key B should still work.
     let resp_b = server
-        .get("/api/v1/me")
+        .get("/api/v1/acls")
         .add_header(
             axum_test::http::header::AUTHORIZATION,
             format!("Bearer {}", key_b.data.api_key)
@@ -538,6 +540,126 @@ async fn auth_with_api_key_inactive_account_returns_403() {
 
     // The DB query in find_account_id_by_key_hash filters on status = 'active', so an
     // inactive account returns None from the extractor, which yields 401 (not 403).
+    let resp = server
+        .get("/api/v1/me")
+        .add_header(
+            axum_test::http::header::AUTHORIZATION,
+            format!("Bearer {api_key}")
+                .parse::<axum_test::http::HeaderValue>()
+                .unwrap(),
+        )
+        .clear_cookies()
+        .await;
+    assert_eq!(resp.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+// ---------------------------------------------------------------------------
+// 16. create_api_key_with_expiry_success
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn create_api_key_with_expiry_success() {
+    let (_pg, pool) = common::setup_db().await;
+    let jwt_key = common::test_jwt_key();
+    let account_id = make_account(&pool, 50000015, "Alice").await;
+
+    let mut server = make_server(pool);
+    server.add_cookie(session_cookie(account_id, &jwt_key));
+
+    let before = Utc::now();
+    let resp = server
+        .post("/api/v1/account/api-keys")
+        .json(&serde_json::json!({ "name": "Expiring Key", "expires_days": 30 }))
+        .await;
+    assert_eq!(resp.status_code(), StatusCode::CREATED);
+
+    let body: CreateKeyEnvelope = resp.json();
+    let expires_at = body.data.expires_at.expect("expires_at should be set");
+    let expected_min = before + chrono::Duration::days(30);
+    let expected_max = Utc::now() + chrono::Duration::days(30);
+    assert!(
+        expires_at >= expected_min && expires_at <= expected_max,
+        "expires_at out of expected range"
+    );
+
+    // expires_at should also appear in the list entry.
+    let list: ListKeysEnvelope = server.get("/api/v1/account/api-keys").await.json();
+    let entry = &list.data.api_keys[0];
+    assert!(entry.expires_at.is_some());
+}
+
+// ---------------------------------------------------------------------------
+// 17. create_api_key_unlimited_with_zero
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn create_api_key_unlimited_with_zero() {
+    let (_pg, pool) = common::setup_db().await;
+    let jwt_key = common::test_jwt_key();
+    let account_id = make_account(&pool, 50000016, "Alice").await;
+
+    let mut server = make_server(pool);
+    server.add_cookie(session_cookie(account_id, &jwt_key));
+
+    let body: CreateKeyEnvelope = server
+        .post("/api/v1/account/api-keys")
+        .json(&serde_json::json!({ "name": "Unlimited Zero", "expires_days": 0 }))
+        .await
+        .json();
+    assert!(body.data.expires_at.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// 18. create_api_key_unlimited_with_omitted
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn create_api_key_unlimited_with_omitted() {
+    let (_pg, pool) = common::setup_db().await;
+    let jwt_key = common::test_jwt_key();
+    let account_id = make_account(&pool, 50000017, "Alice").await;
+
+    let mut server = make_server(pool);
+    server.add_cookie(session_cookie(account_id, &jwt_key));
+
+    let body: CreateKeyEnvelope = server
+        .post("/api/v1/account/api-keys")
+        .json(&serde_json::json!({ "name": "Unlimited Omitted" }))
+        .await
+        .json();
+    assert!(body.data.expires_at.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// 19. expired_key_returns_401
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn expired_key_returns_401() {
+    let (_pg, pool) = common::setup_db().await;
+    let jwt_key = common::test_jwt_key();
+    let account_id = make_account(&pool, 50000018, "Alice").await;
+
+    let mut server = make_server(pool.clone());
+    server.add_cookie(session_cookie(account_id, &jwt_key));
+
+    let created: CreateKeyEnvelope = server
+        .post("/api/v1/account/api-keys")
+        .json(&serde_json::json!({ "name": "Soon Expired", "expires_days": 30 }))
+        .await
+        .json();
+    let api_key = created.data.api_key;
+    let key_id: Uuid = created.data.id.parse().unwrap();
+
+    // Back-date the expiry so the key is already expired.
+    sqlx::query!(
+        "UPDATE api_key SET expires_at = now() - interval '1 second' WHERE id = $1",
+        key_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
     let resp = server
         .get("/api/v1/me")
         .add_header(

@@ -17,7 +17,7 @@ use crate::{
 
 /// Rejects requests from accounts that are not in `active` status, or that
 /// have any blocked EVE character (one ban = account banned — see
-/// `DECISIONS.md` "Banning model").
+/// `DECISIONS_context.md` "Banning model").
 /// Must run after the `AccountId` extractor has already validated the JWT.
 pub async fn require_active_account(
     State(state): State<Arc<AppState>>,

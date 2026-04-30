@@ -11,6 +11,10 @@ use crate::db::{account, character};
 pub enum AuthError {
     #[error("character is already linked to a different account")]
     CharacterOwnerMismatch,
+    #[error("eve character is blocked")]
+    EveCharacterBlocked,
+    #[error("account is blocked")]
+    AccountBanned,
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -331,4 +335,28 @@ pub async fn login_or_register(
     );
 
     Ok(acc.id)
+}
+
+/// Returns `Err(AuthError::Internal)` if the DB check fails, or a sentinel
+/// `Err` value that handlers can map to 403 if the character is blocked.
+/// We reuse `AuthError::Internal` for the DB failure and a dedicated variant
+/// below for the blocked case — but to keep the diff minimal the handler
+/// checks the bool result itself, so we just expose the raw bool here.
+pub async fn ensure_eve_character_not_blocked(
+    pool: &PgPool,
+    eve_character_id: i64,
+) -> Result<(), AuthError> {
+    let blocked = account::is_eve_character_blocked(pool, eve_character_id).await?;
+    if blocked {
+        return Err(AuthError::EveCharacterBlocked);
+    }
+    Ok(())
+}
+
+pub async fn ensure_account_not_banned(pool: &PgPool, account_id: Uuid) -> Result<(), AuthError> {
+    let banned = account::account_has_blocked_character(pool, account_id).await?;
+    if banned {
+        return Err(AuthError::AccountBanned);
+    }
+    Ok(())
 }

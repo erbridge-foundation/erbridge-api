@@ -2,6 +2,8 @@ pub mod audit;
 pub mod config;
 pub mod crypto;
 pub mod db;
+#[cfg(feature = "dev-seed")]
+pub mod dev_seed;
 pub mod dto;
 pub mod esi;
 pub mod extractors;
