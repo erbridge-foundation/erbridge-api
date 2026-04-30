@@ -7,7 +7,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | #  | Title                                                                       | Status | Model      | Effort |
 |----|-----------------------------------------------------------------------------|--------|------------|--------|
 | 1  | Add `dev-seed` cargo feature to `Cargo.toml`                                | `[x]`  | Haiku 4.5  | low    |
-| 2  | Implement `src/dev_seed.rs` module                                          | `[ ]`  | Sonnet 4.6 | medium |
+| 2  | Implement `src/dev_seed.rs` module                                          | `[x]`  | Sonnet 4.6 | medium |
 | 3  | Wire `dev_seed::run_if_requested` into `src/lib.rs` and `src/main.rs`       | `[ ]`  | Haiku 4.5  | low    |
 | 4  | Local smoke test: build with feature, seed DB, hit `/api/v1/accounts/me`    | `[ ]`  | Sonnet 4.6 | low    |
 | 5  | Verify release build excludes `dev_seed` symbols                            | `[ ]`  | Haiku 4.5  | low    |
@@ -58,6 +58,8 @@ Model rationale: Haiku 4.5 for mechanical, single-file edits. Sonnet 4.6 for cod
 **Acceptance criteria:**
 - `cargo build --features dev-seed` succeeds.
 - `cargo clippy --features dev-seed -- -D warnings` clean.
+
+**Outcome:** Created `src/dev_seed.rs` implementing `run_if_requested` with two-canary refusal logic, key format validation, idempotency check by admin key hash, and single-transaction seeding of admin account + character + API key and user account + character + API key. Also added `#[cfg(feature = "dev-seed")] pub mod dev_seed;` to `src/lib.rs` so the module is compiled under the feature gate (step 3 adds the `main.rs` call site). Both `cargo build --features dev-seed` and `cargo clippy --features dev-seed -- -D warnings` passed clean.
 
 ---
 
