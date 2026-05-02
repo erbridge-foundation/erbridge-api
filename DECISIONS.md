@@ -1,0 +1,153 @@
+# Architecture Decisions
+
+Decisions that are not obvious from the code and are likely to be revisited
+or questioned in future. See also ADRs referenced inline in `CODEBASE_context.md`.
+
+---
+
+## Layering rule: handlers must not call db directly
+
+**Decision:** All request handling must follow a strict three-layer model:
+`handler → service → db`. Handlers call service functions; service functions
+call db functions. Handlers **must not** call `db::*` functions directly.
+
+**Rationale:** Direct handler-to-db calls scatter business logic across the
+handler layer, make it impossible to reuse logic between handlers, and mean
+that invariants (e.g. "banning one character bans the whole account") can be
+silently bypassed by any handler that skips the service layer. The service
+layer is the single place where those invariants are enforced.
+
+**Rule:**
+- Handlers live in `src/handlers/` and deal only with request parsing,
+  auth/permission checks via extractors, and response serialisation.
+- Service functions live in `src/services/` (or `src/service.rs` until
+  extracted) and own all business logic: validation, multi-step transactions,
+  cross-entity invariants.
+- DB functions live in `src/db/` and are pure data access — no business logic.
+- If you find yourself writing `db::something(…)` inside a handler, stop and
+  introduce or extend a service function instead.
+
+**If you are tempted to call db directly from a handler:** ask whether the
+logic should be shared with another handler or whether there is an invariant
+that must be enforced consistently. The answer is almost always yes.
+
+---
+
+## audit_log scope: admin/compliance actions only
+
+**Decision:** `audit_log` records changes to *administrative objects* — accounts,
+characters, ACLs, maps. It does **not** record day-to-day gameplay mutations
+(connections, signatures, link operations).
+
+**Rationale:** Map mutations (create/delete connection, add/delete signature,
+link signature, update metadata) are already fully recorded in `map_events`,
+which is the authoritative, replayable event log for map state. Writing the
+same operations to `audit_log` would turn a compliance/security log into a
+high-volume activity log, with different retention and query requirements.
+
+**Boundary:**
+
+| Action | Logged in `audit_log`? | Why |
+|--------|------------------------|-----|
+| Account register/delete/purge | Yes | Account lifecycle |
+| Character add/remove/set-main | Yes | Account object mutation |
+| ACL create/rename/delete | Yes | Access control object lifecycle |
+| ACL member add/update/remove | Yes | Access control change |
+| ACL attach/detach to map | Yes | Access control change (admin permission required) |
+| Map create/delete | Yes | Resource lifecycle |
+| Map connection/signature mutations | **No** | Gameplay; covered by `map_events` |
+
+**If you are tempted to add a new `AuditEvent` variant for a map mutation:**
+ask whether it belongs in `map_events` instead. The test is: is this an
+access-control or administrative action, or is it something a regular user
+does during normal gameplay?
+
+---
+
+## Server admin role: scope and bootstrap
+
+**Decision:** A single boolean flag `account.is_server_admin` grants access to
+the `/api/v1/admin/*` route tree. There is no multi-tier RBAC, no per-permission
+grant model, and no separate principals table.
+
+**Capability boundaries:** Server admins are operators, not auditors of private
+data. They can list and reassign/hard-delete maps and ACLs, block EVE characters,
+grant/revoke admin, and read `audit_log`. They **cannot** read ACL members or
+map contents — those go through the normal ACL permission path, which the admin
+role does not satisfy. Admins see the full map list only via
+`/api/v1/admin/maps`; `/api/v1/maps` continues to behave as for a normal user
+(ownership + ACL filtering).
+
+**Bootstrap rule:** The first account to register on a fresh instance becomes a
+server admin atomically inside the registration transaction:
+
+```sql
+INSERT INTO account (is_server_admin)
+SELECT NOT EXISTS (SELECT 1 FROM account)
+RETURNING id, is_server_admin;
+```
+
+No env var, no startup allowlist, no advisory lock. If two registrations race
+on a brand-new instance both could come back as admin — that's acceptable on
+first run since the operator can revoke via the admin API. There is **no
+re-bootstrap on zero admins**: a deployment that drops to zero admins requires
+manual recovery (`UPDATE account SET is_server_admin = TRUE WHERE id = '…'`)
+rather than silently re-arming the rule. The last-admin guard on
+`revoke-admin` prevents accidentally falling into that state via the API.
+
+**Banning model:** There is no account-level ban column. The single lever is
+`blocked_eve_character` keyed on `eve_character_id` — EVE characters are what
+authenticate, the account is an internal grouping. **One ban = account
+banned**: if *any* character on an account is in `blocked_eve_character`, the
+whole account is rejected — login (via any character on that account),
+add-character, and `require_active_account` all refuse. This stops a banned
+actor from continuing to operate via unblocked alts on the same account.
+The login and add-character flows additionally reject the requesting
+`eve_character_id` directly before doing any account/character lookup.
+`account.status` keeps its existing `active | pending_delete` shape.
+
+**Ownership transfer:** When an admin reassigns `map.owner_account_id` or
+`acl.owner_account_id`, the previous owner silently loses owner-derived
+permission. No automatic ACL adjustment is made — that is the point of the
+operation.
+
+---
+
+## OpenAPI spec is generated from code, not hand-maintained
+
+**Decision:** The OpenAPI 3.x specification served at `/api/v1/openapi.json` is
+derived at compile time from `#[utoipa::path]` annotations on handlers and
+`#[derive(ToSchema)]` on DTOs. There is no checked-in `openapi.json`,
+`swagger.yaml`, or hand-written API description; the binary is the source of
+truth and the spec is whatever the running binary says it is. Swagger UI is
+served at `/api/v1/swagger-ui` from the same in-code `ApiDoc`.
+
+**Rationale:** A separately maintained spec drifts from the implementation
+within weeks — endpoints get added, fields change shape, status codes shift,
+and the document silently lies. Generating the spec from the same types and
+handlers that serve traffic makes drift impossible: if the annotation is
+wrong the type system catches it, and if the annotation is missing the
+endpoint simply does not appear in `/api/v1/swagger-ui`, which is visible enough
+to get fixed.
+
+**Rule:**
+- Every handler routed under `/api/v1` or `/auth` must carry a
+  `#[utoipa::path(...)]` attribute and be registered in `ApiDoc` via
+  `utoipa-axum`'s `routes!` macro. Adding a route without an annotation is
+  a review-blocking omission.
+- Every DTO type that crosses the HTTP boundary (request body, response
+  body, query struct) must derive `ToSchema` and be listed in `ApiDoc`'s
+  `components(schemas(...))`.
+- Endpoints that require authentication must declare
+  `security(("cookieAuth" = []), ("bearerAuth" = []))`. Admin endpoints
+  must additionally state in their description that `is_server_admin` is
+  required.
+- When changing an existing endpoint's request shape, response shape, or
+  status codes, update the annotation in the same commit as the handler
+  change.
+
+**If you are tempted to skip the annotation because "it's just a small
+endpoint":** the spec is what external integrators and the frontend rely
+on; an undocumented endpoint is by definition unreachable from the
+documented API surface, and discovering it later requires reading the
+source.

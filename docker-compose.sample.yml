@@ -1,0 +1,44 @@
+# Sample docker-compose for local development.
+# Copy to docker-compose.yml and adjust as needed.
+#
+# Starts:
+#   - PostgreSQL (port 5432)
+#   - erbridge-api (port 8080, built from source)
+#
+# Usage:
+#   cp docker-compose.sample.yml docker-compose.yml
+#   cp .env.sample .env          # then fill in ESI credentials
+#   docker compose up --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: erbridge
+      POSTGRES_USER: erbridge
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erbridge"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to use the compose service name
+      DATABASE_URL: postgres://erbridge:password@db:5432/erbridge
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
